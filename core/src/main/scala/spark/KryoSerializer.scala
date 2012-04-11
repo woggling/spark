@@ -8,9 +8,12 @@ import scala.collection.immutable
 import scala.collection.mutable
 
 import com.esotericsoftware.kryo._
+import com.esotericsoftware.kryo.io.{Input, Output}
 import com.esotericsoftware.kryo.{Serializer => KSerializer}
-import com.esotericsoftware.kryo.serialize.ClassSerializer
-import de.javakaffee.kryoserializers.KryoReflectionFactorySupport
+
+import java.lang.reflect.Constructor
+import sun.reflect.ReflectionFactory
+
 
 /**
  * Zig-zag encoder used to write object sizes to serialization streams.
@@ -64,57 +67,60 @@ object ZigZag {
   }
 }
 
-class KryoSerializationStream(kryo: Kryo, buf: ByteBuffer, out: OutputStream)
+class KryoSerializationStream(kryo: Kryo, output: Output, outStream: OutputStream)
 extends SerializationStream {
-  val channel = Channels.newChannel(out)
 
   def writeObject[T](t: T) {
-    kryo.writeClassAndObject(buf, t)
-    ZigZag.writeInt(buf.position(), out)
-    buf.flip()
-    channel.write(buf)
-    buf.clear()
+    output.setOutputStream(outStream)
+    kryo.writeClassAndObject(output, t)
+    ZigZag.writeInt(output.position(), outStream)
+    output.flush()
+    output.clear()
+    output.setOutputStream(null)
   }
 
-  def flush() { out.flush() }
-  def close() { out.close() }
+  def flush() { outStream.flush() }
+  def close() { outStream.close() }
 }
 
-class KryoDeserializationStream(buf: ObjectBuffer, in: InputStream)
+class KryoDeserializationStream(kryo: Kryo, inStream: InputStream)
 extends DeserializationStream {
   def readObject[T](): T = {
-    val len = ZigZag.readInt(in)
-    buf.readClassAndObject(in, len).asInstanceOf[T]
+    val len = ZigZag.readInt(inStream)
+    val input = new Input(inStream)
+    kryo.readClassAndObject(input).asInstanceOf[T]
   }
 
-  def close() { in.close() }
+  def close() { inStream.close() }
 }
 
-class KryoSerializerInstance(ks: KryoSerializer) extends SerializerInstance {
-  val buf = ks.threadBuf.get()
+class KryoSerializerInstance(val kryo: Kryo, val bufferSize: Int) extends SerializerInstance {
+  
+  val output = new Output(bufferSize, bufferSize)
 
   def serialize[T](t: T): Array[Byte] = {
-    buf.writeClassAndObject(t)
+    kryo.writeClassAndObject(output, t)
+    output.toBytes()
   }
 
   def deserialize[T](bytes: Array[Byte]): T = {
-    buf.readClassAndObject(bytes).asInstanceOf[T]
-  }
-
-  def deserialize[T](bytes: Array[Byte], loader: ClassLoader): T = {
-    val oldClassLoader = ks.kryo.getClassLoader
-    ks.kryo.setClassLoader(loader)
-    val obj = buf.readClassAndObject(bytes).asInstanceOf[T]
-    ks.kryo.setClassLoader(oldClassLoader)
+    val input = new Input(bytes)
+    val obj = kryo.readClassAndObject(input).asInstanceOf[T]
+    input.rewind()
     obj
   }
 
+  def deserialize[T](bytes: Array[Byte], loader: ClassLoader): T = {
+    kryo.setClassLoader(loader)
+    deserialize[T](bytes)
+  }
+
   def outputStream(s: OutputStream): SerializationStream = {
-    new KryoSerializationStream(ks.kryo, ks.threadByteBuf.get(), s)
+    new KryoSerializationStream(kryo, output, s)
   }
 
   def inputStream(s: InputStream): DeserializationStream = {
-    new KryoDeserializationStream(buf, s)
+    new KryoDeserializationStream(kryo, s)
   }
 }
 
@@ -123,19 +129,66 @@ trait KryoRegistrator {
   def registerClasses(kryo: Kryo): Unit
 }
 
+/** Provides support for deserializing classes without a default constructor. */
+object KryoReflectionFactorySupport {
+  private val REFLECTION_FACTORY: ReflectionFactory = ReflectionFactory.getReflectionFactory()
+  private val INITARGS = Seq[java.lang.Object]()
+  private val _constructors = new java.util.concurrent.ConcurrentHashMap[Class[_], Constructor[_]]()
+  
+  private def newInstanceFrom(constructor: Constructor[_]): Any = {
+    try {
+      return constructor.newInstance()
+    } catch {
+      case e: Exception => throw new RuntimeException(e)
+    }
+  }
+  
+  private def newConstructorForSerialization[T](cls: Class[T]): Constructor[_] = {
+    try {
+      val constructor: Constructor[_] = REFLECTION_FACTORY.newConstructorForSerialization(
+          cls, classOf[Object].getDeclaredConstructor())
+      constructor.setAccessible(true)
+      return constructor
+    } catch {
+      case e: Exception => throw new RuntimeException(e)
+    }
+  }
+  
+  private def getNoArgsConstructor( cls: Class[_] ): Constructor[_] = {
+    val constructors = cls.getConstructors()
+    constructors.foreach { constructor => {
+      if ( constructor.getParameterTypes().length == 0 ) {
+        constructor.setAccessible(true)
+        return constructor
+      }
+    }}
+    return null
+  }
+}
+
+/** Provides support for deserializing classes without a default constructor. */
+class KryoReflectionFactorySupport extends Kryo {
+  override def newInstance[T](cls: Class[T]): T = {
+    var constructor = KryoReflectionFactorySupport._constructors.get(cls)
+    if (constructor == null) {
+      constructor = KryoReflectionFactorySupport.getNoArgsConstructor(cls)
+      if (constructor == null) {
+        constructor = KryoReflectionFactorySupport.newConstructorForSerialization(cls)
+      }
+      KryoReflectionFactorySupport._constructors.put(cls, constructor)
+    }
+    return KryoReflectionFactorySupport.newInstanceFrom(constructor).asInstanceOf[T]
+  }
+}
+
 class KryoSerializer extends Serializer with Logging {
-  val kryo = createKryo()
+  
+  val kryo = new ThreadLocal[Kryo] {
+    override def initialValue = createKryo()
+  }
 
   val bufferSize = 
-    System.getProperty("spark.kryoserializer.buffer.mb", "2").toInt * 1024 * 1024 
-
-  val threadBuf = new ThreadLocal[ObjectBuffer] {
-    override def initialValue = new ObjectBuffer(kryo, bufferSize)
-  }
-
-  val threadByteBuf = new ThreadLocal[ByteBuffer] {
-    override def initialValue = ByteBuffer.allocate(bufferSize)
-  }
+    System.getProperty("spark.kryoserializer.buffer.mb", "20").toInt * 1024 * 1024
 
   def createKryo(): Kryo = {
     // This is used so we can serialize/deserialize objects without a zero-arg
@@ -161,37 +214,37 @@ class KryoSerializer extends Serializer with Logging {
       kryo.register(obj.getClass)
     }
 
-    // Register the following classes for passing closures.
-    kryo.register(classOf[Class[_]], new ClassSerializer(kryo))
-    kryo.setRegistrationOptional(true)
-
     // Register some commonly used Scala singleton objects. Because these
     // are singletons, we must return the exact same local object when we
     // deserialize rather than returning a clone as FieldSerializer would.
-    class SingletonSerializer(obj: AnyRef) extends KSerializer {
-      override def writeObjectData(buf: ByteBuffer, obj: AnyRef) {}
-      override def readObjectData[T](buf: ByteBuffer, cls: Class[T]): T = obj.asInstanceOf[T]
+    class SingletonSerializer(obj: AnyRef) extends KSerializer[AnyRef] {
+      override def write(kryo: Kryo, output: Output, obj: AnyRef) {}
+      override def read (kryo: Kryo, input: Input, cls: Class[AnyRef]): AnyRef = obj.asInstanceOf[AnyRef]
     }
     kryo.register(None.getClass, new SingletonSerializer(None))
     kryo.register(Nil.getClass, new SingletonSerializer(Nil))
 
     // Register maps with a special serializer since they have complex internal structure
     class ScalaMapSerializer(buildMap: Array[(Any, Any)] => scala.collection.Map[Any, Any])
-    extends KSerializer {
-      override def writeObjectData(buf: ByteBuffer, obj: AnyRef) {
+    extends KSerializer[Array[(Any, Any)] => scala.collection.Map[Any, Any]] {
+      override def write(kryo: Kryo, output: Output, obj: Array[(Any, Any)] => scala.collection.Map[Any, Any]) {
         val map = obj.asInstanceOf[scala.collection.Map[Any, Any]]
-        kryo.writeObject(buf, map.size.asInstanceOf[java.lang.Integer])
+        kryo.writeObject(output, map.size.asInstanceOf[java.lang.Integer])
         for ((k, v) <- map) {
-          kryo.writeClassAndObject(buf, k)
-          kryo.writeClassAndObject(buf, v)
+          kryo.writeClassAndObject(output, k)
+          kryo.writeClassAndObject(output, v)
         }
       }
-      override def readObjectData[T](buf: ByteBuffer, cls: Class[T]): T = {
-        val size = kryo.readObject(buf, classOf[java.lang.Integer]).intValue
+      override def read (
+        kryo: Kryo,
+        input: Input,
+        cls: Class[Array[(Any, Any)] => scala.collection.Map[Any, Any]])
+      : Array[(Any, Any)] => scala.collection.Map[Any, Any] = {
+        val size = kryo.readObject(input, classOf[java.lang.Integer]).intValue
         val elems = new Array[(Any, Any)](size)
         for (i <- 0 until size)
-          elems(i) = (kryo.readClassAndObject(buf), kryo.readClassAndObject(buf))
-        buildMap(elems).asInstanceOf[T]
+          elems(i) = (kryo.readClassAndObject(input), kryo.readClassAndObject(input))
+        buildMap(elems).asInstanceOf[Array[(Any, Any)] => scala.collection.Map[Any, Any]]
       }
     }
     kryo.register(mutable.HashMap().getClass, new ScalaMapSerializer(mutable.HashMap() ++ _))
@@ -218,5 +271,5 @@ class KryoSerializer extends Serializer with Logging {
     kryo
   }
 
-  def newInstance(): SerializerInstance = new KryoSerializerInstance(this)
+  def newInstance(): SerializerInstance = new KryoSerializerInstance(kryo.get, bufferSize)
 }

@@ -10,7 +10,7 @@ import scala.collection.mutable.ArrayBuffer
 
 import java.io.{InputStream, OutputStream, DataInputStream, DataOutputStream}
 
-import com.esotericsoftware.kryo._
+import com.esotericsoftware.kryo.{Serializable => _,_}
 
 class PageRankUtils extends Serializable {
   def computeWithCombiner(numVertices: Long, epsilon: Double)(

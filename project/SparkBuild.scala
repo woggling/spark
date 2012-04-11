@@ -52,7 +52,6 @@ object SparkBuild extends Build {
       "org.apache.hadoop" % "hadoop-core" % "0.20.2",
       "asm" % "asm-all" % "3.3.1",
       "com.google.protobuf" % "protobuf-java" % "2.3.0",
-      "de.javakaffee" % "kryo-serializers" % "0.9",
       "org.jboss.netty" % "netty" % "3.2.6.Final",
       "it.unimi.dsi" % "fastutil" % "6.4.2"
     )
