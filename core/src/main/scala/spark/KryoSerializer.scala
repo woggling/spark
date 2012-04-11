@@ -15,90 +15,41 @@ import java.lang.reflect.Constructor
 import sun.reflect.ReflectionFactory
 
 
-/**
- * Zig-zag encoder used to write object sizes to serialization streams.
- * Based on Kryo's integer encoder.
- */
-object ZigZag {
-  def writeInt(n: Int, out: OutputStream) {
-    var value = n
-    if ((value & ~0x7F) == 0) {
-      out.write(value)
-      return
-    }
-    out.write(((value & 0x7F) | 0x80))
-    value >>>= 7
-    if ((value & ~0x7F) == 0) {
-      out.write(value)
-      return
-    }
-    out.write(((value & 0x7F) | 0x80))
-    value >>>= 7
-    if ((value & ~0x7F) == 0) {
-      out.write(value)
-      return
-    }
-    out.write(((value & 0x7F) | 0x80))
-    value >>>= 7
-    if ((value & ~0x7F) == 0) {
-      out.write(value)
-      return
-    }
-    out.write(((value & 0x7F) | 0x80))
-    value >>>= 7
-    out.write(value)
-  }
-
-  def readInt(in: InputStream): Int = {
-    var offset = 0
-    var result = 0
-    while (offset < 32) {
-      val b = in.read()
-      if (b == -1) {
-        throw new EOFException("End of stream")
-      }
-      result |= ((b & 0x7F) << offset)
-      if ((b & 0x80) == 0) {
-        return result
-      }
-      offset += 7
-    }
-    throw new SparkException("Malformed zigzag-encoded integer")
-  }
-}
-
-class KryoSerializationStream(kryo: Kryo, output: Output, outStream: OutputStream)
+class KryoSerializationStream(kryo: Kryo, bufferSize: Int, outStream: OutputStream)
 extends SerializationStream {
+  // Each stream needs its own output buffer.
+  val output = new Output(outStream, bufferSize)
 
   def writeObject[T](t: T) {
     output.setOutputStream(outStream)
     kryo.writeClassAndObject(output, t)
-    ZigZag.writeInt(output.position(), outStream)
     output.flush()
-    output.clear()
-    output.setOutputStream(null)
   }
 
   def flush() { outStream.flush() }
   def close() { outStream.close() }
 }
 
-class KryoDeserializationStream(kryo: Kryo, inStream: InputStream)
+
+class KryoDeserializationStream(kryo: Kryo, bufferSize: Int, inStream: InputStream)
 extends DeserializationStream {
+  // Each stream needs its own input buffer.
+  val input = new Input(inStream, bufferSize)
+
   def readObject[T](): T = {
-    val len = ZigZag.readInt(inStream)
-    val input = new Input(inStream)
     kryo.readClassAndObject(input).asInstanceOf[T]
   }
 
   def close() { inStream.close() }
 }
 
+
 class KryoSerializerInstance(val kryo: Kryo, val bufferSize: Int) extends SerializerInstance {
   
   val output = new Output(bufferSize, bufferSize)
 
   def serialize[T](t: T): Array[Byte] = {
+    output.clear()
     kryo.writeClassAndObject(output, t)
     output.toBytes()
   }
@@ -116,20 +67,27 @@ class KryoSerializerInstance(val kryo: Kryo, val bufferSize: Int) extends Serial
   }
 
   def outputStream(s: OutputStream): SerializationStream = {
-    new KryoSerializationStream(kryo, output, s)
+    new KryoSerializationStream(kryo, bufferSize, s)
   }
 
   def inputStream(s: InputStream): DeserializationStream = {
-    new KryoDeserializationStream(kryo, s)
+    new KryoDeserializationStream(kryo, bufferSize, s)
   }
 }
 
-// Used by clients to register their own classes
+
+/**
+ * Used by clients to register their own classes.
+ */
 trait KryoRegistrator {
   def registerClasses(kryo: Kryo): Unit
 }
 
-/** Provides support for deserializing classes without a default constructor. */
+
+/**
+ * Provides support for deserializing classes without a default constructor.
+ * Code taken from Martin Grotzke's kyro-serializers project.
+ */
 object KryoReflectionFactorySupport {
   private val REFLECTION_FACTORY: ReflectionFactory = ReflectionFactory.getReflectionFactory()
   private val INITARGS = Seq[java.lang.Object]()
@@ -166,7 +124,11 @@ object KryoReflectionFactorySupport {
   }
 }
 
-/** Provides support for deserializing classes without a default constructor. */
+
+/**
+ * Provides support for deserializing classes without a default constructor.
+ * Code taken from Martin Grotzke's kyro-serializers project.
+ */
 class KryoReflectionFactorySupport extends Kryo {
   override def newInstance[T](cls: Class[T]): T = {
     var constructor = KryoReflectionFactorySupport._constructors.get(cls)
@@ -181,6 +143,7 @@ class KryoReflectionFactorySupport extends Kryo {
   }
 }
 
+
 class KryoSerializer extends Serializer with Logging {
   
   val kryo = new ThreadLocal[Kryo] {
@@ -194,25 +157,6 @@ class KryoSerializer extends Serializer with Logging {
     // This is used so we can serialize/deserialize objects without a zero-arg
     // constructor.
     val kryo = new KryoReflectionFactorySupport()
-
-    // Register some commonly used classes
-    val toRegister: Seq[AnyRef] = Seq(
-      // Arrays
-      Array(1), Array(1.0), Array(1.0f), Array(1L), Array(""), Array(("", "")),
-      Array(new java.lang.Object), Array(1.toByte), Array(true), Array('c'),
-      // Specialized Tuple2s
-      ("", ""), (1, 1), (1.0, 1.0), (1L, 1L),
-      (1, 1.0), (1.0, 1), (1L, 1.0), (1.0, 1L), (1, 1L), (1L, 1),
-      // Scala collections
-      List(1), mutable.ArrayBuffer(1),
-      // Options and Either
-      Some(1), Left(1), Right(1),
-      // Higher-dimensional tuples
-      (1, 1, 1), (1, 1, 1, 1), (1, 1, 1, 1, 1)
-    )
-    for (obj <- toRegister) {
-      kryo.register(obj.getClass)
-    }
 
     // Register some commonly used Scala singleton objects. Because these
     // are singletons, we must return the exact same local object when we
@@ -273,3 +217,4 @@ class KryoSerializer extends Serializer with Logging {
 
   def newInstance(): SerializerInstance = new KryoSerializerInstance(kryo.get, bufferSize)
 }
+

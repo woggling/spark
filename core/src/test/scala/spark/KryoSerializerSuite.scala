@@ -81,6 +81,22 @@ class KryoSerializerSuite extends FunSuite {
     check(List(Some(mutable.HashMap(1->1, 2->2)), None, Some(mutable.HashMap(3->4))))
   }
 
+  test("streams") {
+    import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+
+    val objs = Seq(1, 1.0, "hi", List[Int](1, 2, 3))
+
+    val ser = (new KryoSerializer).newInstance()
+    val outStream = new ByteArrayOutputStream
+    val serOutStream = ser.outputStream(outStream)
+    objs.foreach(serOutStream.writeObject)
+
+    val serInStream = ser.inputStream(new ByteArrayInputStream(outStream.toByteArray()))
+    objs.foreach { obj => {
+      assert(obj === serInStream.readObject())
+    }}
+  }
+
   test("custom registrator") {
     import spark.test._
     System.setProperty("spark.kryo.registrator", classOf[MyRegistrator].getName)
