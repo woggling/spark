@@ -18,29 +18,41 @@ import sun.reflect.ReflectionFactory
 class KryoSerializationStream(kryo: Kryo, bufferSize: Int, outStream: OutputStream)
 extends SerializationStream {
   // Each stream needs its own output buffer.
-  val output = new Output(outStream, bufferSize)
+  val output = new Output(outStream)
 
   def writeObject[T](t: T) {
-    output.setOutputStream(outStream)
     kryo.writeClassAndObject(output, t)
-    output.flush()
   }
 
-  def flush() { outStream.flush() }
-  def close() { outStream.close() }
+  def flush() {
+    output.flush()
+    outStream.flush()
+  }
+
+  def close() { 
+    output.close()
+    outStream.close()
+  }
 }
 
 
-class KryoDeserializationStream(kryo: Kryo, bufferSize: Int, inStream: InputStream)
+class KryoDeserializationStream(val kryo: Kryo, val bufferSize: Int, val inStream: InputStream)
 extends DeserializationStream {
   // Each stream needs its own input buffer.
-  val input = new Input(inStream, bufferSize)
+  val input = new Input(inStream)
 
   def readObject[T](): T = {
-    kryo.readClassAndObject(input).asInstanceOf[T]
+    try {
+      kryo.readClassAndObject(input).asInstanceOf[T]
+    } catch {
+      case e: com.esotericsoftware.kryo.KryoException => throw new java.io.EOFException
+    }
   }
 
-  def close() { inStream.close() }
+  def close() {
+    input.close()
+    inStream.close()
+  }
 }
 
 
