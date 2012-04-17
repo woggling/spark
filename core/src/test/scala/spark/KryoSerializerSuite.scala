@@ -90,6 +90,7 @@ class KryoSerializerSuite extends FunSuite {
     val outStream = new ByteArrayOutputStream
     val serOutStream = ser.outputStream(outStream)
     objs.foreach(serOutStream.writeObject)
+    serOutStream.close()
 
     val serInStream = ser.inputStream(new ByteArrayInputStream(outStream.toByteArray()))
     objs.foreach { obj => {
