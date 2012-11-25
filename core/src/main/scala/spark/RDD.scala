@@ -95,6 +95,13 @@ abstract class RDD[T: ClassManifest](
   /** Optionally overridden by subclasses to specify placement preferences. */
   protected def getPreferredLocations(split: Partition): Seq[String] = Nil
 
+  /** Record user function generating this RDD. */
+  private[spark] val origin = Utils.getSparkCallSite
+  
+  /** Record whether this RDD is read often */
+  @transient private[spark] var cachedReadCount = 0
+  @transient private[spark] var balanceReadMissCount = 0
+  
   /** Optionally overridden by subclasses to specify how they are partitioned. */
   val partitioner: Option[Partitioner] = None
 

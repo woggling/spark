@@ -3,6 +3,7 @@ package spark.scheduler
 import java.net.URI
 
 import spark._
+import scala.collection.mutable.HashSet
 import spark.storage.BlockManagerId
 
 /**
@@ -31,6 +32,7 @@ private[spark] class Stage(
   val numPartitions = rdd.partitions.size
   val outputLocs = Array.fill[List[MapStatus]](numPartitions)(Nil)
   var numAvailableOutputs = 0
+  var handledNonLocal = false
 
   /** When first task was submitted to scheduler. */
   var submissionTime: Option[Long] = None

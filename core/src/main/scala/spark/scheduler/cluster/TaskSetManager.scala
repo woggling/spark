@@ -32,6 +32,8 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
   val SPECULATION_QUANTILE = System.getProperty("spark.speculation.quantile", "0.75").toDouble
   val SPECULATION_MULTIPLIER = System.getProperty("spark.speculation.multiplier", "1.5").toDouble
 
+  val USE_IGNORE_LOCAL = System.getProperty("spark.experimental.ignoreLocal", "false") == "true"
+
   // Serializer for closures and tasks.
   val ser = SparkEnv.get.closureSerializer.newInstance()
 
@@ -190,7 +192,10 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
   def slaveOffer(execId: String, host: String, availableCpus: Double): Option[TaskDescription] = {
     if (tasksFinished < numTasks && availableCpus >= CPUS_PER_TASK) {
       val time = System.currentTimeMillis
-      val localOnly = (time - lastPreferredLaunchTime < LOCALITY_WAIT)
+      val localOnly = (
+        (!USE_IGNORE_LOCAL || !taskSet.ignoreLocal) &&
+        (time - lastPreferredLaunchTime < LOCALITY_WAIT)
+      )
 
       findTask(host, localOnly) match {
         case Some(index) => {
@@ -224,7 +229,12 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
           val taskName = "task %s:%d".format(taskSet.id, index)
           return Some(new TaskDescription(taskId, execId, taskName, serializedTask))
         }
-        case _ =>
+        case _ => {
+          if (localOnly && allPendingTasks.size > 0) {
+            logInfo(("No tasks found for offer due to locality restriction " +
+                     " (host %s; %f cpus)").format(host, availableCpus))
+          }
+        }
       }
     }
     return None

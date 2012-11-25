@@ -54,6 +54,15 @@ class DAGScheduler(
     eventQueue.put(TaskSetFailed(taskSet, reason))
   }
 
+  val REPLICATE_THRESHOLD = System.getProperty("spark.replicate.threshold", "500").toLong
+
+  override def localTasksNotFound(taskSet: TaskSet, taskIndexes: Seq[Int], delay: Long,
+                                  targetHost: String): Unit = {
+    if (delay >= REPLICATE_THRESHOLD) { 
+      eventQueue.put(LocalTasksNotFound(taskSet, taskIndexes.toArray, targetHost))
+    }
+  }
+
   // The time, in millis, to wait for fetch failure events to stop coming in after one is detected;
   // this is a simplistic way to avoid resubmitting tasks in the non-fetchable map stage one by one
   // as more failure events come in
@@ -428,9 +437,11 @@ class DAGScheduler(
     val myPending = pendingTasks.getOrElseUpdate(stage, new HashSet)
     myPending.clear()
     var tasks = ArrayBuffer[Task[_]]()
+    val originRDDs = HashSet[RDD[_]]()
     if (stage.isShuffleMap) {
       for (p <- 0 until stage.numPartitions if stage.outputLocs(p) == Nil) {
-        val locs = getPreferredLocs(stage.rdd, p)
+        val (cachedOrigins, locs) = getPreferredLocsWithOrigin(stage.rdd, p)
+        originRDDs ++= cachedOrigins
         tasks += new ShuffleMapTask(stage.id, stage.rdd, stage.shuffleDep.get, p, locs)
       }
     } else {
@@ -438,16 +449,22 @@ class DAGScheduler(
       val job = resultStageToJob(stage)
       for (id <- 0 until job.numPartitions if (!job.finished(id))) {
         val partition = job.partitions(id)
-        val locs = getPreferredLocs(stage.rdd, partition)
+        val (cachedOrigins, locs) = getPreferredLocsWithOrigin(stage.rdd, partition)
+        originRDDs ++= cachedOrigins
         tasks += new ResultTask(stage.id, stage.rdd, job.func, partition, locs, id)
       }
     }
+    originRDDs.foreach(_.cachedReadCount += 1)
+    val misbalanced = originRDDs.map(_.balanceReadMissCount).reduceOption(_ max _).getOrElse(0) > 2
     if (tasks.size > 0) {
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
+      logInfo("misbalanced? " + misbalanced + " based on " +
+              originRDDs.map(_.balanceReadMissCount).toList + " " +
+              originRDDs.map(_.cachedReadCount).toList)
       myPending ++= tasks
       logDebug("New pending tasks: " + myPending)
       taskSched.submitTasks(
-        new TaskSet(tasks.toArray, stage.id, stage.newAttemptId(), stage.priority))
+        new TaskSet(tasks.toArray, stage.id, stage.newAttemptId(), stage.priority, misbalanced))
       if (!stage.submissionTime.isDefined) {
         stage.submissionTime = Some(System.currentTimeMillis())
       }
@@ -618,6 +635,19 @@ class DAGScheduler(
     }
   }
 
+  def handleLocalTasksNotFound(stage: Stage, indexes: Seq[Int], nonLocalHost: String): Unit =
+  {
+    if (!stage.handledNonLocal) {
+      stage.handledNonLocal = true
+      indexes.flatMap(index => getPreferredLocsWithOrigin(stage.rdd, index)._1).headOption match {
+        case Some(rdd) => {
+          rdd.balanceReadMissCount += 1
+        }
+        case _ => {}
+      }
+    }
+  }
+  
   /**
    * Aborts all jobs depending on a particular Stage. This is called in response to a task set
    * being cancelled by the TaskScheduler. Use taskSetFailed() to inject this event from outside.
@@ -665,16 +695,16 @@ class DAGScheduler(
     visitedRdds.contains(target.rdd)
   }
 
-  private def getPreferredLocs(rdd: RDD[_], partition: Int): List[String] = {
+  private def getPreferredLocsWithOrigin(rdd: RDD[_], partition: Int): (List[RDD[_]], List[String]) = {
     // If the partition is cached, return the cache locations
     val cached = getCacheLocs(rdd)(partition)
     if (cached != Nil) {
-      return cached
+      return (List(rdd), cached)
     }
     // If the RDD has some placement preferences (as is the case for input RDDs), get those
     val rddPrefs = rdd.preferredLocations(rdd.partitions(partition)).toList
     if (rddPrefs != Nil) {
-      return rddPrefs
+      return (List.empty[RDD[_]], rddPrefs)
     }
     // If the RDD has narrow dependencies, pick the first partition of the first narrow dep
     // that has any placement preferences. Ideally we would choose based on transfer sizes,
@@ -682,13 +712,17 @@ class DAGScheduler(
     rdd.dependencies.foreach(_ match {
       case n: NarrowDependency[_] =>
         for (inPart <- n.getParents(partition)) {
-          val locs = getPreferredLocs(n.rdd, inPart)
+          val (sources, locs) = getPreferredLocsWithOrigin(n.rdd, inPart)
           if (locs != Nil)
-            return locs
+            return (sources, locs)
         }
       case _ =>
     })
-    return Nil
+    return (Nil, Nil)
+  }
+
+  def getPreferredLocs(rdd: RDD[_], partition: Int): List[String] = {
+    return getPreferredLocsWithOrigin(rdd, partition)._2
   }
 
   private def cleanup(cleanupTime: Long) {

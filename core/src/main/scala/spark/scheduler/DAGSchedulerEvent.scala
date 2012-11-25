@@ -33,3 +33,9 @@ private[spark] case class ExecutorLost(execId: String) extends DAGSchedulerEvent
 private[spark] case class TaskSetFailed(taskSet: TaskSet, reason: String) extends DAGSchedulerEvent
 
 private[spark] case object StopDAGScheduler extends DAGSchedulerEvent
+
+private[spark] case class LocalTasksNotFound(
+      taskSet: TaskSet,
+      taskIndexes: Seq[Int],
+      targetHost: String)
+    extends DAGSchedulerEvent

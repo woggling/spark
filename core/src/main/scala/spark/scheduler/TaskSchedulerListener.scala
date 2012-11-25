@@ -16,4 +16,9 @@ private[spark] trait TaskSchedulerListener {
 
   // The TaskScheduler wants to abort an entire task set.
   def taskSetFailed(taskSet: TaskSet, reason: String): Unit
+
+  // We declined to schedule tasks due to locality constraints;
+  // and we last launched a local task the specified number of milliseconds ago
+  def localTasksNotFound(taskSet: TaskSet, taskIndexes: Seq[Int], delay: Long,
+                         targetHost: String): Unit
 }
