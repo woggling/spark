@@ -135,6 +135,7 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
    * that tasks are balanced across the cluster.
    */
   def resourceOffers(offers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = {
+    logInfo("Got some resource offers")
     synchronized {
       SparkEnv.set(sc.env)
       // Mark each slave as alive and remember its hostname
@@ -164,6 +165,7 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
                 activeExecutorIds += execId
                 executorsByHost(host) += execId
                 availableCpus(i) -= 1
+                logInfo("Launched a task")
                 launchedTask = true
 
               case None => {}
@@ -179,6 +181,7 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
   }
 
   def statusUpdate(tid: Long, state: TaskState, serializedData: ByteBuffer) {
+    logInfo("Got status update for " + tid + ": state=" + state)
     var taskSetToUpdate: Option[TaskSetManager] = None
     var failedExecutor: Option[String] = None
     var taskFailed = false

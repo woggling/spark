@@ -58,6 +58,7 @@ class DAGScheduler(
 
   override def localTasksNotFound(taskSet: TaskSet, taskIndexes: Seq[Int], delay: Long,
                                   targetHost: String): Unit = {
+    logInfo("localTasksNotFound: " + taskSet + " on " + targetHost + " with delay " + delay)
     if (delay >= REPLICATE_THRESHOLD) { 
       eventQueue.put(LocalTasksNotFound(taskSet, taskIndexes.toArray, targetHost))
     }
