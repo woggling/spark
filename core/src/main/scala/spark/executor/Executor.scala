@@ -68,6 +68,21 @@ private[spark] class Executor extends Logging {
       }
     )
 
+    // Workaround for http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6503430
+    {
+      val t1 = java.io.File.createTempFile("spark", null)
+      val t2 = java.io.File.createTempFile("spark", null)
+
+      val f1 = new java.io.RandomAccessFile(t1, "rw")
+      f1.write(42)
+      f1.seek(0)
+      val out = new java.io.FileOutputStream(t2)
+      out.getChannel.transferFrom(f1.getChannel, 0, 1)
+      f1.close
+      out.close
+    }
+
+
     // Initialize Spark environment (using system properties read above)
     env = SparkEnv.createFromSystemProperties(executorId, slaveHostname, 0, false, false)
     SparkEnv.set(env)
