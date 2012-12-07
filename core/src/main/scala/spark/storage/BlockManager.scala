@@ -953,7 +953,12 @@ object BlockManager extends Logging {
 
   def getMaxMemoryFromSystemProperties: Long = {
     val memoryFraction = System.getProperty("spark.storage.memoryFraction", "0.66").toDouble
-    (Runtime.getRuntime.maxMemory * memoryFraction).toLong
+    val minFreeSlaveMemoryMb = 
+      Utils.memoryStringToMb(System.getProperty("spark.minFreeSlaveMemory", "16m"))
+    Math.min(
+      (Runtime.getRuntime.maxMemory * memoryFraction).toLong,
+      Runtime.getRuntime.maxMemory - minFreeSlaveMemoryMb * 1024L * 1024L
+    )
   }
 
   def getHeartBeatFrequencyFromSystemProperties: Long =
