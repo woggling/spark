@@ -39,6 +39,11 @@ class DAGScheduler(taskSched: TaskScheduler) extends TaskSchedulerListener with 
     eventQueue.put(HostLost(host))
   }
 
+  // Called by TaskScheduler when a host OOMs (in addition to hostLost()).
+  override def oomDetected(host: String) {
+    eventQueue.put(OOMDetected(host))
+  }
+
   // Called by TaskScheduler to cancel an entier TaskSet due to repeated failures.
   override def taskSetFailed(taskSet: TaskSet, reason: String) {
     eventQueue.put(TaskSetFailed(taskSet, reason))
@@ -52,6 +57,10 @@ class DAGScheduler(taskSched: TaskScheduler) extends TaskSchedulerListener with 
   // The time, in millis, to wake up between polls of the completion queue in order to potentially
   // resubmit failed stages
   val POLL_TIMEOUT = 10L
+
+  // Extra space to assume is needed after OOM (MB)
+  val OOM_EXTRA_BUFFER = Utils.memoryStringToMb(
+    System.getProperty("spark.oomMemoryAdjust", "128m"))
 
   private val lock = new Object          // Used for access to the entire DAGScheduler
 
@@ -74,6 +83,8 @@ class DAGScheduler(taskSched: TaskScheduler) extends TaskSchedulerListener with 
   val deadHosts = new HashSet[String]  // TODO: The code currently assumes these can't come back;
                                        // that's not going to be a realistic assumption in general
 
+  val oomHosts = new HashSet[String] // To keep us from handling OOMs multiple times.
+  
   val waiting = new HashSet[Stage] // Stages we need to run whose parents aren't done
   val running = new HashSet[Stage] // Stages we are running right now
   val failed = new HashSet[Stage]  // Stages that must be resubmitted due to fetch failures
@@ -264,6 +275,9 @@ class DAGScheduler(taskSched: TaskScheduler) extends TaskSchedulerListener with 
 
         case HostLost(host) =>
           handleHostLost(host)
+
+        case OOMDetected(host) =>
+          handleOOMDetected(host)
 
         case completion: CompletionEvent =>
           handleTaskCompletion(completion)
@@ -498,6 +512,32 @@ class DAGScheduler(taskSched: TaskScheduler) extends TaskSchedulerListener with 
       case other =>
         // Non-fetch failure -- probably a bug in user code; abort all jobs depending on this stage
         abortStage(idToStage(task.stageId), task + " failed: " + other)
+    }
+  }
+
+  def handleOOMDetected(host: String) {
+    if (!oomHosts.contains(host)) {
+      oomHosts += host
+      logInfo("Detected OOM on host: " + host)
+      val memoryStatus = env.blockManager.master.getBlockManagerStatistics
+      memoryStatus.filter(_._1.ip == host).headOption match {
+        case Some((id, stats)) => {
+          // This only tells us about the cache, we need to know about the total heap
+          // available, too.
+          val (max, remaining, heapTotal) = (stats.totalCacheMemory, stats.remainingCacheMemory,
+                                             stats.slaveHeapMemory)
+          val configuredSlackMemory = Utils.memoryStringToMb(
+            System.getProperty("spark.minFreeSlaveMemory"))
+          val hostSlackMemory = ((heapTotal - (max - remaining)) / 1024L / 1024L).asInstanceOf[Int]
+          logInfo("OOM host had slack of " + hostSlackMemory)
+          val newSlack = Math.min(hostSlackMemory + OOM_EXTRA_BUFFER, configuredSlackMemory)
+          logInfo("Setting new slack memory to " + newSlack)
+          System.setProperty("spark.minFreeSlaveMemory", "" + newSlack)
+        } 
+        case None => {
+          logInfo("Couldn't get BlockManager data for " + host)
+        }
+      }
     }
   }
 

@@ -14,6 +14,9 @@ private[spark] trait TaskSchedulerListener {
   // A node was lost from the cluster.
   def hostLost(host: String): Unit
 
+  // An OOM event was detected on the cluster.
+  def oomDetected(host: String): Unit
+
   // The TaskScheduler wants to abort an entire task set.
   def taskSetFailed(taskSet: TaskSet, reason: String): Unit
 }
