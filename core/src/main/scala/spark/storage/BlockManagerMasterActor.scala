@@ -49,8 +49,8 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   }
 
   def receive = {
-    case RegisterBlockManager(blockManagerId, maxMemSize, slaveActor) =>
-      register(blockManagerId, maxMemSize, slaveActor)
+    case RegisterBlockManager(blockManagerId, maxMemSize, heapSize, slaveActor) =>
+      register(blockManagerId, maxMemSize, heapSize, slaveActor)
 
     case UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size) =>
       updateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size)
@@ -67,6 +67,9 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
 
     case GetMemoryStatus =>
       getMemoryStatus
+
+    case GetBlockManagerStatistics =>
+      getBlockManagerStatistics
 
     case RemoveBlock(blockId) =>
       removeBlock(blockId)
@@ -177,7 +180,11 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     sender ! res
   }
 
-  private def register(blockManagerId: BlockManagerId, maxMemSize: Long, slaveActor: ActorRef) {
+  private def getBlockManagerStatistics() {
+    sender ! blockManagerInfo.mapValues(_.getStatistics).toMap
+  }
+
+  private def register(blockManagerId: BlockManagerId, maxMemSize: Long, heapSize: Long, slaveActor: ActorRef) {
     val startTimeMs = System.currentTimeMillis()
     val tmp = " " + blockManagerId + " "
 
@@ -194,7 +201,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       }
 
       blockManagerInfo += (blockManagerId -> new BlockManagerMasterActor.BlockManagerInfo(
-        blockManagerId, System.currentTimeMillis(), maxMemSize, slaveActor))
+        blockManagerId, System.currentTimeMillis(), maxMemSize, heapSize, slaveActor))
     }
     sender ! true
   }
@@ -326,11 +333,15 @@ object BlockManagerMasterActor {
       val blockManagerId: BlockManagerId,
       timeMs: Long,
       val maxMem: Long,
+      val heapSize: Long,
       val slaveActor: ActorRef)
     extends Logging {
 
     private var _lastSeenMs: Long = timeMs
     private var _remainingMem: Long = maxMem
+    private var _usedDisk: Long = 0
+    private var _memoryBlocks: Int = 0
+    private var _diskBlocks: Int = 0
 
     // Mapping from block id to its status.
     private val _blocks = new JHashMap[String, BlockStatus]
@@ -361,11 +372,14 @@ object BlockManagerMasterActor {
         _blocks.put(blockId, BlockStatus(storageLevel, memSize, diskSize))
         if (storageLevel.useMemory) {
           _remainingMem -= memSize
+          _memoryBlocks += 1
           logInfo("Added %s in memory on %s:%d (size: %s, free: %s)".format(
             blockId, blockManagerId.ip, blockManagerId.port, Utils.memoryBytesToString(memSize),
             Utils.memoryBytesToString(_remainingMem)))
         }
         if (storageLevel.useDisk) {
+          _usedDisk += diskSize
+          _diskBlocks += 1
           logInfo("Added %s on disk on %s:%d (size: %s)".format(
             blockId, blockManagerId.ip, blockManagerId.port, Utils.memoryBytesToString(diskSize)))
         }
@@ -390,7 +404,25 @@ object BlockManagerMasterActor {
 
     def lastSeenMs: Long = _lastSeenMs
 
+    def usedDisk: Long = _usedDisk
+
     def blocks: JHashMap[String, BlockStatus] = _blocks
+
+    def memoryBlocks: Int = _memoryBlocks
+
+    def diskBlocks: Int = _diskBlocks
+
+    def getStatistics: BlockManagerStatistics = new BlockManagerStatistics(
+      totalCacheMemory=maxMem,
+      remainingCacheMemory=remainingMem,
+      slaveHeapMemory=heapSize,
+
+      cacheDiskSpace=usedDisk,
+
+      reportedMemoryBlocks=memoryBlocks,
+      reportedDiskBlocks=diskBlocks
+    )
+
 
     override def toString: String = "BlockManagerInfo " + timeMs + " " + _remainingMem
 

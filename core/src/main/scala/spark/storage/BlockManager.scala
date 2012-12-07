@@ -118,7 +118,8 @@ class BlockManager(
    * BlockManagerWorker actor.
    */
   private def initialize() {
-    master.registerBlockManager(blockManagerId, maxMemory, slaveActor)
+    master.registerBlockManager(blockManagerId, maxMemory, Runtime.getRuntime.maxMemory,
+                                slaveActor)
     BlockManagerWorker.startBlockManagerWorker(this)
     if (!BlockManager.getDisableHeartBeatsForTesting) {
       heartBeatTask = actorSystem.scheduler.schedule(0.seconds, heartBeatFrequency.milliseconds) {
@@ -154,7 +155,8 @@ class BlockManager(
   def reregister() {
     // TODO: We might need to rate limit reregistering.
     logInfo("BlockManager reregistering with master")
-    master.registerBlockManager(blockManagerId, maxMemory, slaveActor)
+    master.registerBlockManager(blockManagerId, maxMemory, Runtime.getRuntime.maxMemory,
+                                slaveActor)
     reportAllBlocks()
   }
 

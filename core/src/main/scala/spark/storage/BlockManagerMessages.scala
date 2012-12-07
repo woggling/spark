@@ -27,6 +27,7 @@ private[spark]
 case class RegisterBlockManager(
     blockManagerId: BlockManagerId,
     maxMemSize: Long,
+    heapSize: Long,
     sender: ActorRef)
   extends ToBlockManagerMaster
 
@@ -100,3 +101,18 @@ case object GetMemoryStatus extends ToBlockManagerMaster
 
 private[spark]
 case object ExpireDeadHosts extends ToBlockManagerMaster
+
+private[spark]
+class BlockManagerStatistics(
+  val totalCacheMemory: Long,
+  val remainingCacheMemory: Long,
+  val slaveHeapMemory: Long,
+
+  val cacheDiskSpace: Long,
+  
+  val reportedMemoryBlocks: Int,
+  val reportedDiskBlocks: Int
+)
+
+private[spark]
+case class GetBlockManagerStatistics extends ToBlockManagerMaster

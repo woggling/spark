@@ -152,9 +152,11 @@ class BlockManagerSuite extends FunSuite with BeforeAndAfter with PrivateMethodT
     store.putSingle("a3-to-remove", a3, StorageLevel.MEMORY_ONLY, false)
 
     // Checking whether blocks are in memory and memory size
-    val memStatus = master.getMemoryStatus.head._2
-    assert(memStatus._1 == 2000L, "total memory " + memStatus._1 + " should equal 2000")
-    assert(memStatus._2 <= 1200L, "remaining memory " + memStatus._2 + " should <= 1200")
+    val memStatus = master.getBlockManagerStatistics.head._2
+    assert(memStatus.totalCacheMemory == 2000L,
+           "total memory " + memStatus.totalCacheMemory + " should equal 2000")
+    assert(memStatus.remainingCacheMemory <= 1200L,
+           "remaining memory " + memStatus.remainingCacheMemory + " should <= 1200")
     assert(store.getSingle("a1-to-remove") != None, "a1 was not in store")
     assert(store.getSingle("a2-to-remove") != None, "a2 was not in store")
     assert(store.getSingle("a3-to-remove") != None, "a3 was not in store")

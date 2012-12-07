@@ -58,9 +58,9 @@ private[spark] class BlockManagerMaster(
 
   /** Register the BlockManager's id with the master. */
   def registerBlockManager(
-    blockManagerId: BlockManagerId, maxMemSize: Long, slaveActor: ActorRef) {
+    blockManagerId: BlockManagerId, maxMemSize: Long, heapSize: Long, slaveActor: ActorRef) {
     logInfo("Trying to register BlockManager")
-    tell(RegisterBlockManager(blockManagerId, maxMemSize, slaveActor))
+    tell(RegisterBlockManager(blockManagerId, maxMemSize, heapSize, slaveActor))
     logInfo("Registered BlockManager")
   }
 
@@ -114,6 +114,14 @@ private[spark] class BlockManagerMaster(
     askMasterWithRetry[Map[BlockManagerId, (Long, Long)]](GetMemoryStatus)
   }
 
+  /**
+   * Retun statistics about each block manager that are a superset of those returned
+   * by getMemoryStatus.
+   */
+  def getBlockManagerStatistics: Map[BlockManagerId, BlockManagerStatistics] = {
+    askMasterWithRetry[Map[BlockManagerId, BlockManagerStatistics]](GetBlockManagerStatistics)
+  }
+
   /** Stop the master actor, called only on the Spark master node */
   def stop() {
     if (masterActor != null) {
@@ -163,5 +171,4 @@ private[spark] class BlockManagerMaster(
     throw new SparkException(
       "Error sending message to BlockManagerMaster [message = " + message + "]", lastException)
   }
-
 }
