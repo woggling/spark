@@ -20,6 +20,7 @@ object OOMTest extends org.scalatest.Tag("oom")
 class DistributedSuite extends FunSuite with ShouldMatchers with BeforeAndAfter {
 
   val clusterUrl = "local-cluster[2,1,512]"
+  val singleNodeClusterUrl = "local-cluster[1,1,512]"
 
   @transient var sc: SparkContext = _
 
@@ -30,6 +31,7 @@ class DistributedSuite extends FunSuite with ShouldMatchers with BeforeAndAfter 
     }
     System.clearProperty("spark.reducer.maxMbInFlight")
     System.clearProperty("spark.storage.memoryFraction")
+    System.clearProperty("spark.minFreeSlaveMemory")
     // To avoid Akka rebinding to the same port, since it doesn't unbind immediately on shutdown
     System.clearProperty("spark.master.port")
   }
@@ -191,7 +193,7 @@ class DistributedSuite extends FunSuite with ShouldMatchers with BeforeAndAfter 
     assert(values.toSeq === Seq("TEST_VALUE", "TEST_VALUE"))
   }
 
-  test("recover from OOM", OOMTest) {
+  test("recover from fake OOM", OOMTest) {
     import spark.storage.{GetMemoryStatus, BlockManagerId, StorageLevel}
     import DistributedSuite.{markNodeIdentity, failOnMarkedIdentity}
     System.setProperty("spark.distributedSuite.generation", "pre-fail")
@@ -211,6 +213,22 @@ class DistributedSuite extends FunSuite with ShouldMatchers with BeforeAndAfter 
     val result = SparkEnv.get.blockManager.get("test_block")
     assert(result.isDefined)
     assert(result.get.toSeq === Seq(1, 2))
+
+    // Make sure we can still run an RDD
+    val newData = sc.parallelize(1 to 2, 2)
+    assert(newData.count === 2)
+  }
+
+  test("recover from OOM by fixing memoryFraction", OOMTest) {
+    System.setProperty("spark.storage.memoryFraction", "0.9")
+    val OVERFLOW_SIZE = 1024 * 1024 * 300
+    sc = new SparkContext(singleNodeClusterUrl, "test")
+    val data = sc.parallelize(1 to 1, 1)
+    val hugeData = data.map(ignored => Array.fill[Byte](OVERFLOW_SIZE)(42))
+    assert(hugeData.cache.count === 1)
+    // If we don't adjust memoryFraction, this will fail.
+    val secondData = data.map(ignored => Array.fill[Byte](OVERFLOW_SIZE)(42))
+    assert(secondData.cache.count === 1)
   }
 }
 
