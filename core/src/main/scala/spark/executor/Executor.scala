@@ -106,6 +106,15 @@ private[spark] class Executor extends Logging {
           context.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
         }
 
+        // We exit in case the OOM occured while we were updating slave-internal data structures,
+        // perhaps putting them in an inconsistent state.
+        case oom: OutOfMemoryError => {
+          val reason = ExceptionFailure(oom)
+          context.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
+
+          System.exit(1)
+        }
+
         case t: Throwable => {
           val reason = ExceptionFailure(t)
           context.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
