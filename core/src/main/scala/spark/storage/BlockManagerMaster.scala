@@ -529,6 +529,7 @@ private[spark] class BlockManagerMaster(actorSystem: ActorSystem, isMaster: Bool
     while (!res.isDefined) {
       logWarning("Failed to send heart beat " + msg)
       Thread.sleep(REQUEST_RETRY_INTERVAL_MS)
+      res = syncHeartBeat(msg)
     }
     return res.get
   }
