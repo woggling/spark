@@ -154,7 +154,7 @@ private[spark] class MesosSchedulerBackend(
         mem >= executorMemory || slaveIdsWithExecutors.contains(slaveId)
       }
 
-      for ((offer, index) <- offers.zipWithIndex if enoughMemory(offer)) {
+      for ((offer, index) <- Utils.randomize(offers.zipWithIndex) if enoughMemory(offer)) {
         offerableIndices += index
         offerableWorkers += new WorkerOffer(
           offer.getSlaveId.getValue,
