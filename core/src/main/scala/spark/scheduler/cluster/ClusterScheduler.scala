@@ -250,6 +250,10 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
   }
 
   def slaveLost(slaveId: String, reason: ExecutorLossReason) {
+    if (!slaveIdToHost.contains(slaveId)) {
+      logError("Lost unknown slave id " + slaveId + ": " + reason)
+      return
+    }
     var failedHost: Option[String] = None
     synchronized {
       val host = slaveIdToHost(slaveId)
