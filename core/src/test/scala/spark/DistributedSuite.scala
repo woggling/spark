@@ -15,6 +15,8 @@ import scala.collection.mutable.ArrayBuffer
 import SparkContext._
 import storage.StorageLevel
 
+object OOMTest extends org.scalatest.Tag("oom")
+
 class DistributedSuite extends FunSuite with ShouldMatchers with BeforeAndAfter {
 
   val clusterUrl = "local-cluster[2,1,512]"
@@ -188,4 +190,46 @@ class DistributedSuite extends FunSuite with ShouldMatchers with BeforeAndAfter 
     val values = sc.parallelize(1 to 2, 2).map(x => System.getenv("TEST_VAR")).collect()
     assert(values.toSeq === Seq("TEST_VALUE", "TEST_VALUE"))
   }
+
+  test("recover from OOM", OOMTest) {
+    import spark.storage.{GetMemoryStatus, BlockManagerId, StorageLevel}
+    import DistributedSuite.{markNodeIdentity, failOnMarkedIdentity}
+    System.setProperty("spark.distributedSuite.generation", "pre-fail")
+    sc = new SparkContext(clusterUrl, "test")
+    val data = sc.parallelize(1 to 2, 2)
+    val singleton = sc.parallelize(1 to 1, 1)
+    assert(data.count === 2) // force executors to start
+    val masterId = SparkEnv.get.blockManager.blockManagerId
+    val hosts = SparkEnv.get.blockManager.master.getMemoryStatus.map(_._1).toSeq
+    assert(hosts.size === 2)
+    assert(data.flatMap(markNodeIdentity).count === 2)
+    assert(data.flatMap(failOnMarkedIdentity).count === 2)
+    val hostsAfterFailure = SparkEnv.get.blockManager.master.getMemoryStatus.map(_._1).toSeq
+    assert(hostsAfterFailure.size === 2)
+    // Test whether the block managers still work by storing a block with replication
+    singleton.map(x => SparkEnv.get.blockManager.put("test_block", ArrayBuffer[Any](1, 2), StorageLevel.MEMORY_ONLY_2)).count
+    val result = SparkEnv.get.blockManager.get("test_block")
+    assert(result.isDefined)
+    assert(result.get.toSeq === Seq(1, 2))
+  }
 }
+
+object DistributedSuite {
+  import spark.storage.BlockManagerId
+  var mark = false
+  def markNodeIdentity(item: Int): Option[Int] = {
+    mark = true
+    Some(item)
+  }
+  def failOnMarkedIdentity(item: Int): Option[Int] = {
+    if (mark) {
+      val t = new Thread { override def run() { throw new OutOfMemoryError("simulated OOM") } }
+      t.start
+      t.join
+      return None
+    } else {
+      return Some(item)
+    }
+  }
+}
+
