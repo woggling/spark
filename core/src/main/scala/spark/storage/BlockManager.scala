@@ -142,7 +142,7 @@ class BlockManager(
   private def reportAllBlocks() {
     logInfo("Reporting " + blockInfo.size + " blocks to the master.")
     for ((blockId, info) <- blockInfo) {
-      if (!tryToReportBlockStatus(blockId, info)) {
+      if (!tryToReportBlockStatus(blockId, info, !blockId.startsWith("shuffle_"))) {
         logError("Failed to report " + blockId + " to master; giving up.")
         return
       }
@@ -198,8 +198,9 @@ class BlockManager(
    * message reflecting the current status, *not* the desired storage level in its block info.
    * For example, a block with MEMORY_AND_DISK set might have fallen out to be only on disk.
    */
-  def reportBlockStatus(blockId: String, info: BlockInfo) {
-    val needReregister = !tryToReportBlockStatus(blockId, info)
+  def reportBlockStatus(blockId: String, info: BlockInfo, tellMaster: Boolean = true,
+                        sizeDefault: Long = 0L) {
+    val needReregister = !tryToReportBlockStatus(blockId, info, tellMaster, sizeDefualt)
     if (needReregister) {
       logInfo("Got told to reregister updating block " + blockId)
       // Reregistering will report our new block for free.
@@ -213,17 +214,18 @@ class BlockManager(
    * which will be true if the block was successfully recorded and false if
    * the slave needs to re-register.
    */
-  private def tryToReportBlockStatus(blockId: String, info: BlockInfo): Boolean = {
+  private def tryToReportBlockStatus(blockId: String, info: BlockInfo,
+                                     tellMaster: Boolean, sizeDefault: Long): Boolean = {
     val (curLevel, inMemSize, onDiskSize, tellMaster) = info.synchronized {
       info.level match {
         case null =>
-          (StorageLevel.NONE, 0L, 0L, false)
+          (StorageLevel.NONE, sizeDefault, sizeDefault, false)
         case level =>
           val inMem = level.useMemory && memoryStore.contains(blockId)
           val onDisk = level.useDisk && diskStore.contains(blockId)
           val storageLevel = StorageLevel(onDisk, inMem, level.deserialized, level.replication)
-          val memSize = if (inMem) memoryStore.getSize(blockId) else 0L
-          val diskSize = if (onDisk) diskStore.getSize(blockId) else 0L
+          val memSize = if (inMem) memoryStore.getSize(blockId) else sizeDefault
+          val diskSize = if (onDisk) diskStore.getSize(blockId) else sizeDefault
           (storageLevel, memSize, diskSize, info.tellMaster)
       }
     }
@@ -231,6 +233,9 @@ class BlockManager(
     if (tellMaster) {
       master.updateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
     } else {
+      master.masterActor.tell(
+        FakeHearBeat(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
+      )
       true
     }
   }
@@ -261,7 +266,7 @@ class BlockManager(
    * Get block from local block manager.
    */
   def getLocal(blockId: String): Option[Iterator[Any]] = {
-    logDebug("Getting local block " + blockId)
+    master.tell(ReadBlock(blockManagerId, blockId, true))
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
@@ -345,6 +350,7 @@ class BlockManager(
    * Get block from the local block manager as serialized bytes.
    */
   def getLocalBytes(blockId: String): Option[ByteBuffer] = {
+    master.tell(ReadBlock(blockManagerId, blockId, true))
     // TODO: This whole thing is very similar to getLocal; we need to refactor it somehow
     logDebug("Getting local block " + blockId + " as bytes")
 
@@ -410,6 +416,7 @@ class BlockManager(
    * Get block from remote block managers.
    */
   def getRemote(blockId: String): Option[Iterator[Any]] = {
+    master.tell(ReadBlock(blockManagerId, blockId, false))
     if (blockId == null) {
       throw new IllegalArgumentException("Block Id is null")
     }
@@ -671,9 +678,7 @@ class BlockManager(
       // Now that the block is in either the memory or disk store, let other threads read it,
       // and tell the master about it.
       myInfo.markReady(size)
-      if (tellMaster) {
-        reportBlockStatus(blockId, myInfo)
-      }
+      reportBlockStatus(blockId, myInfo, tellMaster, size)
     }
     logDebug("Put block " + blockId + " locally took " + Utils.getUsedTimeMs(startTimeMs))
 
@@ -754,9 +759,7 @@ class BlockManager(
       // Now that the block is in either the memory or disk store, let other threads read it,
       // and tell the master about it.
       myInfo.markReady(bytes.limit)
-      if (tellMaster) {
-        reportBlockStatus(blockId, myInfo)
-      }
+      reportBlockStatus(blockId, myInfo, tellMaster, bytes.limit)
     }
 
     // If replication had started, then wait for it to finish
@@ -837,9 +840,7 @@ class BlockManager(
         if (!blockWasRemoved) {
           logWarning("Block " + blockId + " could not be dropped from memory as it does not exist")
         }
-        if (info.tellMaster) {
-          reportBlockStatus(blockId, info)
-        }
+        reportBlockStatus(blockId, info, info.tellMaster)
         if (!level.useDisk) {
           // The block is completely gone from this node; forget it so we can put() it again later.
           blockInfo.remove(blockId)
@@ -865,9 +866,7 @@ class BlockManager(
           "the disk or memory store")
       }
       blockInfo.remove(blockId)
-      if (info.tellMaster) {
-        reportBlockStatus(blockId, info)
-      }
+      reportBlockStatus(blockId, info, info.tellMaster)
     } else {
       // The block has already been removed; do nothing.
       logWarning("Asked to remove block " + blockId + ", which does not exist")
@@ -892,7 +891,7 @@ class BlockManager(
           iterator.remove()
           logInfo("Dropped block " + id)
         }
-        reportBlockStatus(id, info)
+        reportBlockStatus(id, info, info.tellMaster)
       }
     }
   }

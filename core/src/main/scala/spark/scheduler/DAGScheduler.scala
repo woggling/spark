@@ -462,6 +462,10 @@ class DAGScheduler(
               originRDDs.map(_.balanceReadMissCount).toList + " " +
               originRDDs.map(_.cachedReadCount).toList)
       myPending ++= tasks
+      if (misbalanced) {
+        originRDDs.foreach(_.balanceReadMissCount = 0)
+        logInfo("resetting read miss count for some RDDs")
+      }
       logDebug("New pending tasks: " + myPending)
       taskSched.submitTasks(
         new TaskSet(tasks.toArray, stage.id, stage.newAttemptId(), stage.priority, misbalanced))

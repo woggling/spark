@@ -101,3 +101,9 @@ case object ExpireDeadHosts extends ToBlockManagerMaster
 
 private[spark]
 case object GetStorageStatus extends ToBlockManagerMaster
+
+private[spark]
+case class ReadBlock(blockManagerId: BlockManagerId, blockId: String, local: Boolean) extends ToBlockManagerMaster
+
+private[spark]
+case class FakeHeartBeat(blockManagerId: BlockManagerId, blockId: String, storageLevel: StorageLevel, memSize: Long, diskSize: Long) extends ToBlockManagerMaster

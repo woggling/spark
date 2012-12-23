@@ -231,8 +231,10 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
         }
         case _ => {
           if (localOnly && allPendingTasks.size > 0) {
-            logInfo(("No tasks found for offer due to locality restriction " +
+            logInfo(("XXX:NoTasks:msg=No tasks found for offer due to locality restriction " +
                      " (host %s; %f cpus)").format(host, availableCpus))
+            sched.listener.localTasksNotFound(taskSet, allPendingTasks.toSeq,
+              time - lastPreferredLaunchTime, host)
           }
         }
       }

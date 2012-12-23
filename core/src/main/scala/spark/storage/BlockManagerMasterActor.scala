@@ -91,6 +91,17 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     case HeartBeat(blockManagerId) =>
       heartBeat(blockManagerId)
 
+    case FakeHeartBeat(blockManagerId, blockId, storageLevl, memSize, diskSize) =>
+      logInfo(("XXX:FakeUpdateBlockInfo:" +
+               "ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d").format(
+                  blockManagerid.ip, blockManagerId.port,
+                  blockId, storageLevel, mem, disk))
+
+    case ReadBlock(blockManagerId, blockId, wasLocal) =>
+       logInfo("XXX:ReadBlock:ip=%s:port=%d:blockId=%s:local=%s".format(
+         blockManagerId.ip, blockManagerId.port,
+         blockId, wasLocal))
+
     case other =>
       logInfo("Got unknown message: " + other)
   }
@@ -205,6 +216,10 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       storageLevel: StorageLevel,
       memSize: Long,
       diskSize: Long) {
+
+      logInfo("XXX:UpdateBlockInfo:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d".format(
+        blockManagerId.ip, blockManagerId.port,
+        blockId, storageLevel.toString, memSize, diskSize))
 
     if (!blockManagerInfo.contains(blockManagerId)) {
       if (blockManagerId.executorId == "<driver>" && !isLocal) {
