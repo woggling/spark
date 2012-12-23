@@ -119,6 +119,10 @@ private[spark] class BlockManagerMaster(
     askDriverWithReply[ArrayBuffer[StorageStatus]](GetStorageStatus).toArray
   }
 
+  def tellReadBlock(blockManagerId: BlockManagerId, blockId: String, isLocal: Boolean) {
+    masterActor.tell(ReadBlock(blockManagerId, blockId, isLocal))
+  }
+
   /** Stop the driver actor, called only on the Spark driver node */
   def stop() {
     if (driverActor != null) {

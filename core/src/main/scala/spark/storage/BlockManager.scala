@@ -142,7 +142,7 @@ class BlockManager(
   private def reportAllBlocks() {
     logInfo("Reporting " + blockInfo.size + " blocks to the master.")
     for ((blockId, info) <- blockInfo) {
-      if (!tryToReportBlockStatus(blockId, info, !blockId.startsWith("shuffle_"))) {
+      if (!tryToReportBlockStatus(blockId, info, !blockId.startsWith("shuffle_"), 0L)) {
         logError("Failed to report " + blockId + " to master; giving up.")
         return
       }
@@ -200,7 +200,7 @@ class BlockManager(
    */
   def reportBlockStatus(blockId: String, info: BlockInfo, tellMaster: Boolean = true,
                         sizeDefault: Long = 0L) {
-    val needReregister = !tryToReportBlockStatus(blockId, info, tellMaster, sizeDefualt)
+    val needReregister = !tryToReportBlockStatus(blockId, info, tellMaster, sizeDefault)
     if (needReregister) {
       logInfo("Got told to reregister updating block " + blockId)
       // Reregistering will report our new block for free.
@@ -234,7 +234,7 @@ class BlockManager(
       master.updateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
     } else {
       master.masterActor.tell(
-        FakeHearBeat(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
+        FakeHeartBeat(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
       )
       true
     }
@@ -266,7 +266,7 @@ class BlockManager(
    * Get block from local block manager.
    */
   def getLocal(blockId: String): Option[Iterator[Any]] = {
-    master.tell(ReadBlock(blockManagerId, blockId, true))
+    master.tellReadBlock(blockManagerId, blockId, true)
 
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
@@ -350,7 +350,7 @@ class BlockManager(
    * Get block from the local block manager as serialized bytes.
    */
   def getLocalBytes(blockId: String): Option[ByteBuffer] = {
-    master.tell(ReadBlock(blockManagerId, blockId, true))
+    master.tellReadBlock(blockManagerId, blockId, true)
     // TODO: This whole thing is very similar to getLocal; we need to refactor it somehow
     logDebug("Getting local block " + blockId + " as bytes")
 
@@ -416,7 +416,7 @@ class BlockManager(
    * Get block from remote block managers.
    */
   def getRemote(blockId: String): Option[Iterator[Any]] = {
-    master.tell(ReadBlock(blockManagerId, blockId, false))
+    master.tellReadBlock(blockManagerId, blockId, false)
     if (blockId == null) {
       throw new IllegalArgumentException("Block Id is null")
     }
