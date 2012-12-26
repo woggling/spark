@@ -32,7 +32,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
   initLogging()
 
   val slaveTimeout = System.getProperty("spark.storage.blockManagerSlaveTimeoutMs",
-    "" + (BlockManager.getHeartBeatFrequencyFromSystemProperties * 3)).toLong
+    "" + (BlockManager.getHeartBeatFrequencyFromSystemProperties * 10)).toLong
 
   val checkTimeoutInterval = System.getProperty("spark.storage.blockManagerTimeoutIntervalMs",
     "5000").toLong
