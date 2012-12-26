@@ -235,6 +235,14 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
                      " (host %s; %f cpus)").format(host, availableCpus))
             sched.listener.localTasksNotFound(taskSet, allPendingTasks.toSeq,
               time - lastPreferredLaunchTime, host)
+          } else {
+            // Find "stalled" tasks
+            for ((tid, info) <- taskInfos) {
+              if (time - info.launchTime > 30000L && !info.finished) {
+                logInfo("Possibly stalled TID " + info.taskId + " on " + info.host + 
+                        " launched approx " + (time - info.launchTime) + " ms ago")
+              }
+            }
           }
         }
       }
