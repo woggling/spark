@@ -153,6 +153,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
         sender ! false
       }
     } else {
+      logInfo("HeartBeat: " + blockManagerId)
       blockManagerInfo(blockManagerId).updateLastSeenMs()
       sender ! true
     }
@@ -227,6 +228,7 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
         // so we should not indicate failure.
         sender ! true
       } else {
+        logError("Requesting reregistration on update " + blockManagerId)
         sender ! false
       }
       return

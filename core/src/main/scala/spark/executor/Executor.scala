@@ -129,7 +129,7 @@ private[spark] class Executor extends Logging {
         case oom: OutOfMemoryError => {
           val reason = ExceptionFailure(oom)
           context.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
-          logError("Exception in task ID " + taskId, t)
+          logError("Exception in task ID " + taskId, oom)
           System.exit(2)
         }
 

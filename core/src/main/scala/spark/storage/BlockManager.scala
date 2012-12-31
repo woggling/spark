@@ -147,6 +147,7 @@ class BlockManager(
         return
       }
     }
+    logInfo("Done reporting blocks")
   }
 
   /**
