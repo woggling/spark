@@ -93,12 +93,14 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
 
     case FakeHeartBeat(blockManagerId, blockId, storageLevel, memSize, diskSize) =>
       logInfo(("XXX:FakeUpdateBlockInfo:" +
-               "ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d").format(
+               "t=%ld:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d").format(
+                  System.currentTimeMillis,
                   blockManagerId.ip, blockManagerId.port,
                   blockId, storageLevel, memSize, diskSize))
 
     case ReadBlock(blockManagerId, blockId, wasLocal) =>
-       logInfo("XXX:ReadBlock:ip=%s:port=%d:blockId=%s:local=%s".format(
+       logInfo("XXX:ReadBlock:t=%ld:ip=%s:port=%d:blockId=%s:local=%s".format(
+         System.currentTimeMillis,
          blockManagerId.ip, blockManagerId.port,
          blockId, wasLocal))
 
@@ -218,7 +220,8 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       memSize: Long,
       diskSize: Long) {
 
-      logInfo("XXX:UpdateBlockInfo:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d".format(
+      logInfo("XXX:UpdateBlockInfo:t=%ld:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d".format(
+        System.currentTimeMillis,
         blockManagerId.ip, blockManagerId.port,
         blockId, storageLevel.toString, memSize, diskSize))
 
