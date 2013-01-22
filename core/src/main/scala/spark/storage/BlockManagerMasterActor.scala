@@ -91,18 +91,19 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     case HeartBeat(blockManagerId) =>
       heartBeat(blockManagerId)
 
-    case FakeHeartBeat(blockManagerId, blockId, storageLevel, memSize, diskSize) =>
+    case FakeUpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize) =>
       logInfo(("XXX:FakeUpdateBlockInfo:" +
                "t=%d:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d").format(
                   System.currentTimeMillis,
                   blockManagerId.ip, blockManagerId.port,
                   blockId, storageLevel, memSize, diskSize))
 
-    case ReadBlock(blockManagerId, blockId, wasLocal) =>
-       logInfo("XXX:ReadBlock:t=%d:ip=%s:port=%d:blockId=%s:local=%s".format(
+    case ReadBlock(blockManagerId, blockId, wasLocal, wasDisk, wasPresent) =>
+       logInfo(("XXX:ReadBlock:t=%d:ip=%s:port=%d:" +
+                "blockId=%s:local=%s:on_disk=%s:present=%s").format(
          System.currentTimeMillis,
          blockManagerId.ip, blockManagerId.port,
-         blockId, wasLocal))
+         blockId, wasLocal, wasDisk, wasPresent))
 
     case other =>
       logInfo("Got unknown message: " + other)

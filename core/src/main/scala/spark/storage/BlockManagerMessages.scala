@@ -103,7 +103,7 @@ private[spark]
 case object GetStorageStatus extends ToBlockManagerMaster
 
 private[spark]
-case class ReadBlock(blockManagerId: BlockManagerId, blockId: String, local: Boolean) extends ToBlockManagerMaster
+case class ReadBlock(blockManagerId: BlockManagerId, blockId: String, local: Boolean, disk: Boolean, present: Boolean) extends ToBlockManagerMaster
 
 private[spark]
-case class FakeHeartBeat(blockManagerId: BlockManagerId, blockId: String, storageLevel: StorageLevel, memSize: Long, diskSize: Long) extends ToBlockManagerMaster
+case class FakeUpdateBlockInfo(blockManagerId: BlockManagerId, blockId: String, storageLevel: StorageLevel, memSize: Long, diskSize: Long) extends ToBlockManagerMaster
