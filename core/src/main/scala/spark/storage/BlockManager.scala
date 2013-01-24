@@ -62,7 +62,7 @@ class BlockManager(
 
   private val blockInfo = new TimeStampedHashMap[String, BlockInfo]
 
-  private[storage] val memoryStore: BlockStore = new MemoryStore(this, maxMemory)
+  private[storage] val memoryStore: MemoryStore = new MemoryStore(this, maxMemory)
   private[storage] val diskStore: BlockStore =
     new DiskStore(this, System.getProperty("spark.local.dir", System.getProperty("java.io.tmpdir")))
 
@@ -263,6 +263,12 @@ class BlockManager(
     return locations
   }
 
+  private def logRead(blockId: String, local: Boolean, disk: Boolean,
+                      present: Boolean) {
+    master.tellReadBlock(blockManagerId, blockId, local, disk, present,
+          memoryStore.getCurrentMemory)
+  }
+
   /**
    * Get block from local block manager.
    */
@@ -271,7 +277,7 @@ class BlockManager(
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
     if (blockId.startsWith("shuffle_")) {
-      master.tellReadBlock(blockManagerId, blockId, true, true, true)
+      logRead(blockId, true, true, true)
       return diskStore.getValues(blockId) match {
         case Some(iterator) =>
           Some(iterator)
@@ -292,7 +298,7 @@ class BlockManager(
           logDebug("Getting block " + blockId + " from memory")
           memoryStore.getValues(blockId) match {
             case Some(iterator) =>
-              master.tellReadBlock(blockManagerId, blockId, true, false, true)
+              logRead(blockId, true, false, true)
               return Some(iterator)
             case None =>
               logDebug("Block " + blockId + " not found in memory")
@@ -305,7 +311,7 @@ class BlockManager(
           if (level.useMemory && level.deserialized) {
             diskStore.getValues(blockId) match {
               case Some(iterator) =>
-                master.tellReadBlock(blockManagerId, blockId, true, true, true)
+                logRead(blockId, true, true, true)
                 // Put the block back in memory before returning it
                 // TODO: Consider creating a putValues that also takes in a iterator ?
                 val elements = new ArrayBuffer[Any]
@@ -323,7 +329,7 @@ class BlockManager(
             // Read it as a byte buffer into memory first, then return it
             diskStore.getBytes(blockId) match {
               case Some(bytes) =>
-                master.tellReadBlock(blockManagerId, blockId, true, true, true)
+                logRead(blockId, true, true, true)
                 // Put a copy of the block back in memory before returning it. Note that we can't
                 // put the ByteBuffer returned by the disk store as that's a memory-mapped file.
                 val copyForMemory = ByteBuffer.allocate(bytes.limit)
@@ -337,7 +343,7 @@ class BlockManager(
           } else {
             diskStore.getValues(blockId) match {
               case Some(iterator) =>
-                master.tellReadBlock(blockManagerId, blockId, true, true, true)
+                logRead(blockId, true, true, true)
                 return Some(iterator)
               case None =>
                 throw new Exception("Block " + blockId + " not found on disk, though it should be")
@@ -348,7 +354,7 @@ class BlockManager(
     } else {
       logDebug("Block " + blockId + " not registered locally")
     }
-    master.tellReadBlock(blockManagerId, blockId, true, false, false)
+    logRead(blockId, true, false, false)
     return None
   }
 
@@ -362,7 +368,7 @@ class BlockManager(
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
     if (blockId.startsWith("shuffle_")) {
-      master.tellReadBlock(blockManagerId, blockId, true, true, true)
+      logRead(blockId, true, true, true)
       return diskStore.getBytes(blockId) match {
         case Some(bytes) =>
           Some(bytes)
@@ -383,7 +389,7 @@ class BlockManager(
           logDebug("Getting block " + blockId + " from memory")
           memoryStore.getBytes(blockId) match {
             case Some(bytes) =>
-              master.tellReadBlock(blockManagerId, blockId, true, false, true)
+              logRead(blockId, true, false, true)
               return Some(bytes)
             case None =>
               logDebug("Block " + blockId + " not found in memory")
@@ -395,7 +401,7 @@ class BlockManager(
           // Read it as a byte buffer into memory first, then return it
           diskStore.getBytes(blockId) match {
             case Some(bytes) =>
-              master.tellReadBlock(blockManagerId, blockId, true, true, true)
+              logRead(blockId, true, true, true)
               if (level.useMemory) {
                 if (level.deserialized) {
                   memoryStore.putBytes(blockId, bytes, level)
@@ -417,7 +423,7 @@ class BlockManager(
     } else {
       logDebug("Block " + blockId + " not registered locally")
     }
-    master.tellReadBlock(blockManagerId, blockId, true, false, false)
+    logRead(blockId, true, false, false)
     return None
   }
 
@@ -439,13 +445,13 @@ class BlockManager(
           GetBlock(blockId), ConnectionManagerId(loc.ip, loc.port))
       if (data != null) {
         logDebug("Data is not null: " + data)
-        master.tellReadBlock(blockManagerId, blockId, false, false, true)
+        logRead(blockId, false, false, true)
         return Some(dataDeserialize(blockId, data))
       }
       logDebug("Data is null")
     }
     logDebug("Data not found")
-    master.tellReadBlock(blockManagerId, blockId, false, false, false)
+    logRead(blockId, false, false, false)
     return None
   }
 

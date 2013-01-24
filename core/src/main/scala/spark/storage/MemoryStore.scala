@@ -17,6 +17,9 @@ private class MemoryStore(blockManager: BlockManager, maxMemory: Long)
 
   private val entries = new LinkedHashMap[String, Entry](32, 0.75f, true)
   private var currentMemory = 0L
+
+  def getCurrentMemory: Long = currentMemory
+
   // Object used to ensure that only one thread is putting blocks and if necessary, dropping
   // blocks from the memory store.
   private val putLock = new Object()
