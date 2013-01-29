@@ -157,7 +157,7 @@ private[spark] class MesosSchedulerBackend(
       for ((offer, index) <- Utils.randomize(offers.zipWithIndex) if enoughMemory(offer)) {
         offerableIndices += index
         offerableWorkers += new WorkerOffer(
-          offer.getSlaveId.getValue,
+          offer.getSlaveId.getValue + "-default",
           offer.getHostname,
           getResource(offer.getResourcesList, "cpus").toInt)
       }
@@ -261,7 +261,7 @@ private[spark] class MesosSchedulerBackend(
     synchronized {
       slaveIdsWithExecutors -= slaveId.getValue
     }
-    scheduler.executorLost(slaveId.getValue, reason)
+    scheduler.executorLost(slaveId.getValue + "-default", reason)
   }
 
   override def slaveLost(d: SchedulerDriver, slaveId: SlaveID) {
