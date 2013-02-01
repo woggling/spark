@@ -87,6 +87,8 @@ private[spark] class Executor extends Logging {
     env = SparkEnv.createFromSystemProperties(executorId, slaveHostname, 0, false, false)
     SparkEnv.set(env)
 
+    OstrichGlue.start()
+
     // Start worker thread pool
     threadPool = new ThreadPoolExecutor(
       1, 128, 600, TimeUnit.SECONDS, new SynchronousQueue[Runnable])

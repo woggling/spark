@@ -118,6 +118,8 @@ class SparkContext(
   }
   executorEnvs ++= environment
 
+  OstrichGlue.start()
+
   // Create and start the scheduler
   private var taskScheduler: TaskScheduler = {
     // Regular expression used for local[N] master format

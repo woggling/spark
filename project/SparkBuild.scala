@@ -49,7 +49,8 @@ object SparkBuild extends Build {
 
     // For Sonatype publishing
     resolvers ++= Seq("sonatype-snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
-      "sonatype-staging" at "https://oss.sonatype.org/service/local/staging/deploy/maven2/"),
+      "sonatype-staging" at "https://oss.sonatype.org/service/local/staging/deploy/maven2/",
+      "twitter" at "http://maven.twttr.com/"),
 
     publishMavenStyle := true,
 
@@ -93,6 +94,7 @@ object SparkBuild extends Build {
 
     libraryDependencies ++= Seq(
       "org.eclipse.jetty" % "jetty-server" % "7.5.3.v20111011",
+      "com.twitter" % "ostrich" % "9.1.0",
       "org.scalatest" %% "scalatest" % "1.8" % "test",
       "org.scalacheck" %% "scalacheck" % "1.9" % "test",
       "com.novocode" % "junit-interface" % "0.8" % "test",
