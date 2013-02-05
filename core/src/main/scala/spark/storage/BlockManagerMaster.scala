@@ -124,6 +124,10 @@ private[spark] class BlockManagerMaster(
     masterActor.tell(ReadBlock(blockManagerId, blockId, isLocal, wasDisk, wasPresent, memorySize))
   }
 
+  def startComputeBlock(blockManagerId: BlockManagerId, blockId: String) {
+    masterActor.tell(StartComputeBlock(blockManagerId, blockId))
+  }
+
   /** Stop the driver actor, called only on the Spark driver node */
   def stop() {
     if (driverActor != null) {

@@ -956,6 +956,12 @@ class BlockManager(
     serializer.newInstance().deserializeStream(stream).asIterator
   }
 
+  /** Log that we are starting to compute a block.
+   */
+  def startComputeBlock(blockId: String) {
+    master.startComputeBlock(blockManagerId, blockId)
+  }
+
   def stop() {
     if (heartBeatTask != null) {
       heartBeatTask.cancel()

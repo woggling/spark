@@ -107,3 +107,6 @@ case class ReadBlock(blockManagerId: BlockManagerId, blockId: String, local: Boo
 
 private[spark]
 case class FakeUpdateBlockInfo(blockManagerId: BlockManagerId, blockId: String, storageLevel: StorageLevel, memSize: Long, diskSize: Long) extends ToBlockManagerMaster
+
+private[spark]
+case class StartComputeBlock(blockManagerId: BlockManagerId, blockId: String) extends ToBlockManagerMaster

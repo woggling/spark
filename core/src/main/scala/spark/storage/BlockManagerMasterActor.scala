@@ -105,6 +105,11 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
          System.currentTimeMillis,
          blockManagerId.ip, blockManagerId.port,
          blockId, wasLocal, wasDisk, wasPresent, memorySize))
+    
+    case StartComputeBlock(blockManagerId, blockId) =>
+      logInfo("XXX:StartComputeBlock:t=%d:ip=%s:port=%d:blockId=%s".format(
+          System.currentTimeMillis,
+          blockManagerId.ip, blockManagerId.port, blockId))
 
     case other =>
       logInfo("Got unknown message: " + other)
