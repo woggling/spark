@@ -121,11 +121,16 @@ private[spark] class BlockManagerMaster(
 
   def tellReadBlock(blockManagerId: BlockManagerId, blockId: String, isLocal: Boolean, wasDisk:
   Boolean, wasPresent: Boolean, memorySize: Long) {
-    masterActor.tell(ReadBlock(blockManagerId, blockId, isLocal, wasDisk, wasPresent, memorySize))
+    driverActor.tell(ReadBlock(blockManagerId, blockId, isLocal, wasDisk, wasPresent, memorySize))
+  }
+
+  def fakeUpdateBlockInfo(blockManagerId: BlockManagerId, blockId: String, curLevel: StorageLevel,
+                          memorySize: Long, diskSize: Long) {
+    driverActor.tell(FakeUpdateBlockInfo(blockManagerId, blockId, curLevel, memorySize, diskSize))
   }
 
   def startComputeBlock(blockManagerId: BlockManagerId, blockId: String) {
-    masterActor.tell(StartComputeBlock(blockManagerId, blockId))
+    driverActor.tell(StartComputeBlock(blockManagerId, blockId))
   }
 
   /** Stop the driver actor, called only on the Spark driver node */

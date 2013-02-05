@@ -306,6 +306,9 @@ class DAGScheduler(
       case TaskSetFailed(taskSet, reason) =>
         abortStage(idToStage(taskSet.stageId), reason)
 
+      case LocalTasksNotFound(taskSet, taskIndices, targetHost) =>
+        handleLocalTasksNotFound(idToStage(taskSet.stageId), taskIndices, targetHost)
+
       case StopDAGScheduler =>
         // Cancel any active jobs
         for (job <- activeJobs) {

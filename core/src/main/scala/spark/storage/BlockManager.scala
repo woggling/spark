@@ -234,9 +234,7 @@ class BlockManager(
     if (tellMaster) {
       master.updateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
     } else {
-      master.masterActor.tell(
-        FakeUpdateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
-      )
+      master.fakeUpdateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
       true
     }
   }
