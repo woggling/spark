@@ -14,7 +14,6 @@ object OstrichGlue extends Logging {
     if (httpService == null) {
       var lock = new Object
       val threadGroup = new ThreadGroup("ostrich")
-      threadGroup.setDaemon(true)
 
       val thread = new Thread(threadGroup, "ostrich server thread") {
         override def run = {
@@ -29,10 +28,13 @@ object OstrichGlue extends Logging {
             )
             val environment = RuntimeEnvironment(this, Array[String]())
             httpService = factory(environment)
+            httpService.httpServer
             lock.notifyAll
           }
         }
       }
+      threadGroup.setDaemon(true)
+      thread.setDaemon(true)
       thread.start
       lock.synchronized {
         while (httpService == null) {
