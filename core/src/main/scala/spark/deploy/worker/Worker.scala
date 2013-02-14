@@ -49,7 +49,8 @@ private[spark] class Worker(
   def memoryFree: Int = memory - memoryUsed
 
   def createWorkDir() {
-    workDir = Option(workDirPath).map(new File(_)).getOrElse(new File(sparkHome, "work"))
+    workDir = Option(workDirPath).orElse(Option(System.getenv("SPARK_WORK_DIR"))).
+      map(new File(_)).getOrElse(new File(sparkHome, "work"))
     try {
       if (!workDir.exists() && !workDir.mkdirs()) {
         logError("Failed to create work directory " + workDir)
