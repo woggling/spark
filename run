@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -x
 SCALA_VERSION=2.9.2
 
 # Figure out where the Scala framework is installed
