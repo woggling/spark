@@ -48,6 +48,9 @@ import storage.BlockManagerUI
 import util.{MetadataCleaner, TimeStampedHashMap}
 import storage.{StorageStatus, StorageUtils, RDDInfo}
 
+import spark.executor.ExecutorExitCode
+
+
 /**
  * Main entry point for Spark functionality. A SparkContext represents the connection to a Spark
  * cluster, and can be used to create RDDs, accumulators and broadcast variables on that cluster.
@@ -69,6 +72,25 @@ class SparkContext(
 
   // Ensure logging is initialized before we spawn any threads
   initLogging()
+
+  // XXX: aids my debugging
+  Thread.setDefaultUncaughtExceptionHandler(
+    new Thread.UncaughtExceptionHandler {
+      override def uncaughtException(thread: Thread, exception: Throwable) {
+        try {
+          logError("Uncaught exception in thread " + thread, exception)
+          if (exception.isInstanceOf[OutOfMemoryError]) {
+            System.exit(ExecutorExitCode.OOM)
+          } else {
+            System.exit(ExecutorExitCode.UNCAUGHT_EXCEPTION)
+          }
+        } catch {
+          case oom: OutOfMemoryError => System.exit(ExecutorExitCode.OOM)
+          case t: Throwable => System.exit(ExecutorExitCode.UNCAUGHT_EXCEPTION_TWICE)
+        }
+      }
+    }
+  )
 
   // Set Spark driver host and port system properties
   if (System.getProperty("spark.driver.host") == null) {
