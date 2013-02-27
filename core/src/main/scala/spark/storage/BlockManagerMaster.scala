@@ -13,7 +13,7 @@ import akka.pattern.ask
 import akka.util.{Duration, Timeout}
 import akka.util.duration._
 
-import spark.{Logging, SparkException, Utils}
+import spark.{Logging, SparkEnv, SparkException, Utils}
 
 private[spark] class BlockManagerMaster(
     val actorSystem: ActorSystem,
@@ -70,9 +70,11 @@ private[spark] class BlockManagerMaster(
       blockId: String,
       storageLevel: StorageLevel,
       memSize: Long,
-      diskSize: Long): Boolean = {
+      diskSize: Long,
+      isForRegister: Boolean): Boolean = {
     val res = askDriverWithReply[Boolean](
-      UpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize))
+      UpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize,
+                      SparkEnv.getActiveTask, isForRegister))
     logInfo("Updated info of block " + blockId)
     res
   }
@@ -121,16 +123,19 @@ private[spark] class BlockManagerMaster(
 
   def tellReadBlock(blockManagerId: BlockManagerId, blockId: String, isLocal: Boolean, wasDisk:
   Boolean, wasPresent: Boolean, memorySize: Long) {
-    driverActor.tell(ReadBlock(blockManagerId, blockId, isLocal, wasDisk, wasPresent, memorySize))
+    driverActor.tell(ReadBlock(
+        blockManagerId, blockId, isLocal, wasDisk, wasPresent, memorySize, SparkEnv.getActiveTask))
   }
 
   def fakeUpdateBlockInfo(blockManagerId: BlockManagerId, blockId: String, curLevel: StorageLevel,
-                          memorySize: Long, diskSize: Long) {
-    driverActor.tell(FakeUpdateBlockInfo(blockManagerId, blockId, curLevel, memorySize, diskSize))
+                          memorySize: Long, diskSize: Long, isRegister: Boolean) {
+    driverActor.tell(FakeUpdateBlockInfo(
+        blockManagerId, blockId, curLevel, memorySize, diskSize, isRegister,
+        SparkEnv.getActiveTask))
   }
 
   def startComputeBlock(blockManagerId: BlockManagerId, blockId: String) {
-    driverActor.tell(StartComputeBlock(blockManagerId, blockId))
+    driverActor.tell(StartComputeBlock(blockManagerId, blockId, SparkEnv.getActiveTask))
   }
 
   /** Stop the driver actor, called only on the Spark driver node */

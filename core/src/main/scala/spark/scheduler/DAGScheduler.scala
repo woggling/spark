@@ -398,6 +398,7 @@ class DAGScheduler(
       override def run() {
         try {
           SparkEnv.set(env)
+          SparkEnv.setActiveTask(job.runId + "-locally")
           val rdd = job.finalStage.rdd
           val split = rdd.partitions(job.partitions(0))
           val taskContext = new TaskContext(job.finalStage.id, job.partitions(0), 0)
@@ -406,6 +407,7 @@ class DAGScheduler(
             job.listener.taskSucceeded(0, result)
           } finally {
             taskContext.executeOnCompleteCallbacks()
+            SparkEnv.setActiveTask(null)
           }
         } catch {
           case e: Exception =>

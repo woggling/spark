@@ -142,7 +142,7 @@ class BlockManager(
   private def reportAllBlocks() {
     logInfo("Reporting " + blockInfo.size + " blocks to the master.")
     for ((blockId, info) <- blockInfo) {
-      if (!tryToReportBlockStatus(blockId, info, !blockId.startsWith("shuffle_"), 0L)) {
+      if (!tryToReportBlockStatus(blockId, info, !blockId.startsWith("shuffle_"), 0L, true)) {
         logError("Failed to report " + blockId + " to master; giving up.")
         return
       }
@@ -216,7 +216,8 @@ class BlockManager(
    * the slave needs to re-register.
    */
   private def tryToReportBlockStatus(blockId: String, info: BlockInfo,
-                                     tellMaster: Boolean, sizeDefault: Long): Boolean = {
+                                     tellMaster: Boolean, sizeDefault: Long,
+                                     isRegister: Boolean = false): Boolean = {
     val (curLevel, inMemSize, onDiskSize, tellMaster) = info.synchronized {
       info.level match {
         case null =>
@@ -232,9 +233,9 @@ class BlockManager(
     }
 
     if (tellMaster) {
-      master.updateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
+      master.updateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize, isRegister)
     } else {
-      master.fakeUpdateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize)
+      master.fakeUpdateBlockInfo(blockManagerId, blockId, curLevel, inMemSize, onDiskSize, isRegister)
       true
     }
   }

@@ -103,6 +103,7 @@ private[spark] class Executor extends Logging {
 
     override def run() {
       SparkEnv.set(env)
+      SparkEnv.setActiveTask("" + taskId)
       Thread.currentThread.setContextClassLoader(urlClassLoader)
       val ser = SparkEnv.get.closureSerializer.newInstance()
       logInfo("Running task ID " + taskId)
@@ -147,6 +148,7 @@ private[spark] class Executor extends Logging {
           //System.exit(1)
         }
       }
+      SparkEnv.setActiveTask(null)
     }
   }
 

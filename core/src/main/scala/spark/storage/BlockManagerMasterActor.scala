@@ -51,8 +51,10 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     case RegisterBlockManager(blockManagerId, maxMemSize, slaveActor) =>
       register(blockManagerId, maxMemSize, slaveActor)
 
-    case UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size) =>
-      updateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size)
+    case UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size,
+                         taskId, isRegister) =>
+      updateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size, taskId,
+                      isRegister)
 
     case GetLocations(blockId) =>
       getLocations(blockId)
@@ -91,25 +93,29 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
     case HeartBeat(blockManagerId) =>
       heartBeat(blockManagerId)
 
-    case FakeUpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize) =>
+    case FakeUpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize, isRegister,
+                            taskId) =>
       logInfo(("XXX:FakeUpdateBlockInfo:" +
-               "t=%d:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d").format(
+               "t=%d:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d:" +
+               "taskId=%s:isRegister=%s").format(
                   System.currentTimeMillis,
                   blockManagerId.ip, blockManagerId.port,
-                  blockId, storageLevel, memSize, diskSize))
+                  blockId, storageLevel, memSize, diskSize, taskId,
+                  isRegister))
 
     case ReadBlock(blockManagerId, blockId, wasLocal, wasDisk, wasPresent,
-                   memorySize) =>
+                   memorySize, taskId) =>
        logInfo(("XXX:ReadBlock:t=%d:ip=%s:port=%d:" +
-                "blockId=%s:local=%s:on_disk=%s:present=%s:memSize=%d").format(
+                "blockId=%s:local=%s:on_disk=%s:present=%s:memSize=%d:taskId=%s").format(
          System.currentTimeMillis,
          blockManagerId.ip, blockManagerId.port,
-         blockId, wasLocal, wasDisk, wasPresent, memorySize))
+         blockId, wasLocal, wasDisk, wasPresent, memorySize,
+         taskId))
     
-    case StartComputeBlock(blockManagerId, blockId) =>
-      logInfo("XXX:StartComputeBlock:t=%d:ip=%s:port=%d:blockId=%s".format(
+    case StartComputeBlock(blockManagerId, blockId, taskId) =>
+      logInfo("XXX:StartComputeBlock:t=%d:ip=%s:port=%d:blockId=%s:taskId=%s".format(
           System.currentTimeMillis,
-          blockManagerId.ip, blockManagerId.port, blockId))
+          blockManagerId.ip, blockManagerId.port, blockId, taskId))
 
     case other =>
       logInfo("Got unknown message: " + other)
@@ -225,12 +231,16 @@ class BlockManagerMasterActor(val isLocal: Boolean) extends Actor with Logging {
       blockId: String,
       storageLevel: StorageLevel,
       memSize: Long,
-      diskSize: Long) {
+      diskSize: Long,
+      taskId: String,
+      isRegister: Boolean) {
 
-      logInfo("XXX:UpdateBlockInfo:t=%d:ip=%s:port=%d:blockId=%s:storageLevel=%s:mem=%d:disk=%d".format(
+      logInfo(("XXX:UpdateBlockInfo:t=%d:ip=%s:port=%d:blockId=%s:" +
+               "storageLevel=%s:mem=%d:disk=%d:taskId=%s:isRegister=%s").format(
         System.currentTimeMillis,
         blockManagerId.ip, blockManagerId.port,
-        blockId, storageLevel.toString, memSize, diskSize))
+        blockId, storageLevel.toString, memSize, diskSize,
+        taskId, isRegister))
 
     if (!blockManagerInfo.contains(blockManagerId)) {
       if (blockManagerId.executorId == "<driver>" && !isLocal) {

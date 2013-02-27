@@ -49,6 +49,15 @@ class SparkEnv (
 
 object SparkEnv extends Logging {
   private val env = new ThreadLocal[SparkEnv]
+  private val activeTask = new ThreadLocal[String]
+
+  def getActiveTask: String = {
+    return activeTask.get()
+  }
+
+  def setActiveTask(name: String) {
+    activeTask.set(name)
+  }
 
   def set(e: SparkEnv) {
     env.set(e)

@@ -39,11 +39,13 @@ class UpdateBlockInfo(
     var blockId: String,
     var storageLevel: StorageLevel,
     var memSize: Long,
-    var diskSize: Long)
+    var diskSize: Long,
+    var taskId: String,
+    var isForRegister: Boolean)
   extends ToBlockManagerMaster
   with Externalizable {
 
-  def this() = this(null, null, null, 0, 0)  // For deserialization only
+  def this() = this(null, null, null, 0, 0, null, false)  // For deserialization only
 
   override def writeExternal(out: ObjectOutput) {
     blockManagerId.writeExternal(out)
@@ -51,6 +53,8 @@ class UpdateBlockInfo(
     storageLevel.writeExternal(out)
     out.writeInt(memSize.toInt)
     out.writeInt(diskSize.toInt)
+    out.writeUTF(taskId)
+    out.writeBoolean(isForRegister)
   }
 
   override def readExternal(in: ObjectInput) {
@@ -59,6 +63,8 @@ class UpdateBlockInfo(
     storageLevel = StorageLevel(in)
     memSize = in.readInt()
     diskSize = in.readInt()
+    taskId = in.readUTF()
+    isForRegister = in.readBoolean()
   }
 }
 
@@ -68,13 +74,18 @@ object UpdateBlockInfo {
       blockId: String,
       storageLevel: StorageLevel,
       memSize: Long,
-      diskSize: Long): UpdateBlockInfo = {
-    new UpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize)
+      diskSize: Long,
+      taskId: String,
+      isForRegister: Boolean): UpdateBlockInfo = {
+    new UpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize, taskId,
+                        isForRegister)
   }
 
   // For pattern-matching
-  def unapply(h: UpdateBlockInfo): Option[(BlockManagerId, String, StorageLevel, Long, Long)] = {
-    Some((h.blockManagerId, h.blockId, h.storageLevel, h.memSize, h.diskSize))
+  def unapply(h: UpdateBlockInfo):
+      Option[(BlockManagerId, String, StorageLevel, Long, Long, String, Boolean)] = {
+    Some((h.blockManagerId, h.blockId, h.storageLevel, h.memSize, h.diskSize, h.taskId,
+          h.isForRegister))
   }
 }
 
@@ -103,10 +114,11 @@ private[spark]
 case object GetStorageStatus extends ToBlockManagerMaster
 
 private[spark]
-case class ReadBlock(blockManagerId: BlockManagerId, blockId: String, local: Boolean, disk: Boolean, present: Boolean, localMemorySize: Long) extends ToBlockManagerMaster
+case class ReadBlock(blockManagerId: BlockManagerId, blockId: String, local: Boolean, disk: Boolean, present: Boolean, localMemorySize: Long, taskId: String) extends ToBlockManagerMaster
 
 private[spark]
-case class FakeUpdateBlockInfo(blockManagerId: BlockManagerId, blockId: String, storageLevel: StorageLevel, memSize: Long, diskSize: Long) extends ToBlockManagerMaster
+case class FakeUpdateBlockInfo(blockManagerId: BlockManagerId, blockId: String, storageLevel:
+StorageLevel, memSize: Long, diskSize: Long, isRegister: Boolean, taskId: String) extends ToBlockManagerMaster
 
 private[spark]
-case class StartComputeBlock(blockManagerId: BlockManagerId, blockId: String) extends ToBlockManagerMaster
+case class StartComputeBlock(blockManagerId: BlockManagerId, blockId: String, taskId: String) extends ToBlockManagerMaster
