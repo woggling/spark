@@ -23,23 +23,25 @@ private[spark] class BlockManagerWorker(val blockManager: BlockManager) extends 
   blockManager.connectionManager.onReceiveMessage(onBlockMessageReceive)
 
   def onBlockMessageReceive(msg: Message, id: ConnectionManagerId): Option[Message] = {
-    logDebug("Handling message " + msg)
-    msg match {
-      case bufferMessage: BufferMessage => {
-        try {
-          logDebug("Handling as a buffer message " + bufferMessage)
-          val blockMessages = BlockMessageArray.fromBufferMessage(bufferMessage)
-          logDebug("Parsed as a block message array")
-          val responseMessages = blockMessages.map(processBlockMessage).filter(_ != None).map(_.get)
-          return Some(new BlockMessageArray(responseMessages).toBufferMessage)
-        } catch {
-          case e: Exception => logError("Exception handling buffer message", e)
+    SparkEnv.withActiveTask("<remote-block-manager>") {
+      logDebug("Handling message " + msg)
+      msg match {
+        case bufferMessage: BufferMessage => {
+          try {
+            logDebug("Handling as a buffer message " + bufferMessage)
+            val blockMessages = BlockMessageArray.fromBufferMessage(bufferMessage)
+            logDebug("Parsed as a block message array")
+            val responseMessages = blockMessages.map(processBlockMessage).filter(_ != None).map(_.get)
+            return Some(new BlockMessageArray(responseMessages).toBufferMessage)
+          } catch {
+            case e: Exception => logError("Exception handling buffer message", e)
+            return None
+          }
+        }
+        case otherMessage: Any => {
+          logError("Unknown type message received: " + otherMessage)
           return None
         }
-      }
-      case otherMessage: Any => {
-        logError("Unknown type message received: " + otherMessage)
-        return None
       }
     }
   }
