@@ -59,6 +59,16 @@ object SparkEnv extends Logging {
     activeTask.set(name)
   }
 
+  def withActiveTask(name: String)(f: => Unit) {
+    val oldActiveTask = SparkEnv.getActiveTask
+    SparkEnv.setActiveTask(name)
+    try {
+      f
+    } finally {
+      SparkEnv.setActiveTask(oldActiveTask)
+    }
+  }
+
   def set(e: SparkEnv) {
     env.set(e)
   }
