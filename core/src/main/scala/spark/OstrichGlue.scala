@@ -11,6 +11,10 @@ import com.twitter.ostrich.stats.Stats
 object OstrichGlue extends Logging {
   var httpService: AdminHttpService = null
   def start() {
+    if (System.getenv("NO_OSTRICH") != null &&
+        System.getenv("NO_OSTRICH") != "0") {
+        return
+    }
     if (httpService == null) {
       var lock = new Object
       val threadGroup = new ThreadGroup("ostrich")
