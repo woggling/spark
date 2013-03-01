@@ -56,46 +56,48 @@ private[spark] class LocalScheduler(threads: Int, maxFailures: Int, sc: SparkCon
       logInfo("Running " + task)
       // Set the Spark execution environment for the worker thread
       SparkEnv.set(env)
-      try {
-        Accumulators.clear()
-        Thread.currentThread().setContextClassLoader(classLoader)
+      SparkEnv.withActiveTask("" + attemptId) {
+        try {
+          Accumulators.clear()
+          Thread.currentThread().setContextClassLoader(classLoader)
 
-        // Serialize and deserialize the task so that accumulators are changed to thread-local ones;
-        // this adds a bit of unnecessary overhead but matches how the Mesos Executor works.
-        val ser = SparkEnv.get.closureSerializer.newInstance()
-        val bytes = Task.serializeWithDependencies(task, sc.addedFiles, sc.addedJars, ser)
-        logInfo("Size of task " + idInJob + " is " + bytes.limit + " bytes")
-        val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(bytes)
-        updateDependencies(taskFiles, taskJars)   // Download any files added with addFile
-        val deserializedTask = ser.deserialize[Task[_]](
-            taskBytes, Thread.currentThread.getContextClassLoader)
+          // Serialize and deserialize the task so that accumulators are changed to thread-local ones;
+          // this adds a bit of unnecessary overhead but matches how the Mesos Executor works.
+          val ser = SparkEnv.get.closureSerializer.newInstance()
+          val bytes = Task.serializeWithDependencies(task, sc.addedFiles, sc.addedJars, ser)
+          logInfo("Size of task " + idInJob + " is " + bytes.limit + " bytes")
+          val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(bytes)
+          updateDependencies(taskFiles, taskJars)   // Download any files added with addFile
+          val deserializedTask = ser.deserialize[Task[_]](
+              taskBytes, Thread.currentThread.getContextClassLoader)
 
-        // Run it
-        val result: Any = deserializedTask.run(attemptId)
+          // Run it
+          val result: Any = deserializedTask.run(attemptId)
 
-        // Serialize and deserialize the result to emulate what the Mesos
-        // executor does. This is useful to catch serialization errors early
-        // on in development (so when users move their local Spark programs
-        // to the cluster, they don't get surprised by serialization errors).
-        val resultToReturn = ser.deserialize[Any](ser.serialize(result))
-        val accumUpdates = ser.deserialize[collection.mutable.Map[Long, Any]](
-          ser.serialize(Accumulators.values))
-        logInfo("Finished " + task)
+          // Serialize and deserialize the result to emulate what the Mesos
+          // executor does. This is useful to catch serialization errors early
+          // on in development (so when users move their local Spark programs
+          // to the cluster, they don't get surprised by serialization errors).
+          val resultToReturn = ser.deserialize[Any](ser.serialize(result))
+          val accumUpdates = ser.deserialize[collection.mutable.Map[Long, Any]](
+            ser.serialize(Accumulators.values))
+          logInfo("Finished " + task)
 
-        // If the threadpool has not already been shutdown, notify DAGScheduler
-        if (!Thread.currentThread().isInterrupted)
-          listener.taskEnded(task, Success, resultToReturn, accumUpdates)
-      } catch {
-        case t: Throwable => {
-          logError("Exception in task " + idInJob, t)
-          failCount.synchronized {
-            failCount(idInJob) += 1
-            if (failCount(idInJob) <= maxFailures) {
-              submitTask(task, idInJob)
-            } else {
-              // TODO: Do something nicer here to return all the way to the user
-              if (!Thread.currentThread().isInterrupted)
-                listener.taskEnded(task, new ExceptionFailure(t), null, null)
+          // If the threadpool has not already been shutdown, notify DAGScheduler
+          if (!Thread.currentThread().isInterrupted)
+            listener.taskEnded(task, Success, resultToReturn, accumUpdates)
+        } catch {
+          case t: Throwable => {
+            logError("Exception in task " + idInJob, t)
+            failCount.synchronized {
+              failCount(idInJob) += 1
+              if (failCount(idInJob) <= maxFailures) {
+                submitTask(task, idInJob)
+              } else {
+                // TODO: Do something nicer here to return all the way to the user
+                if (!Thread.currentThread().isInterrupted)
+                  listener.taskEnded(task, new ExceptionFailure(t), null, null)
+              }
             }
           }
         }
