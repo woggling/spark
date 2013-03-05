@@ -133,7 +133,6 @@ private[spark] class Executor extends Logging {
           val reason = ExceptionFailure(oom)
           context.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
           logError("Exception in task ID " + taskId, oom)
-          stop()
           System.exit(2)
         }
 
@@ -211,9 +210,5 @@ private[spark] class Executor extends Logging {
         }
       }
     }
-  }
-
-  def stop() {
-    env.stop()
   }
 }
