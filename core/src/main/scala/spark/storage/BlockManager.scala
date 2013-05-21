@@ -482,6 +482,15 @@ private[spark] class BlockManager(
    * an Iterator of (block ID, value) pairs so that clients may handle blocks in a pipelined
    * fashion as they're received. Expects a size in bytes to be provided for each block fetched,
    * so that we can control the maxMegabytesInFlight for the fetch.
+   *
+   * This method is intended for use in shuffle only; it takes shortcuts (such as assuming
+   * blocks are present on disk) that will break other use cases.
+   *
+   * If local blocks are missing, this function or the returned iterator may throw an exception.
+   *
+   * If remote blocks are unavailable, the resulting iterator will return a (blockId, None)
+   * pair. If one block is missing from a host, other blocks from that host may also
+   * be returned as missing.
    */
   def getMultiple(
     blocksByAddress: Seq[(BlockManagerId, Seq[(String, Long)])], serializer: Serializer)
