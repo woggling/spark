@@ -111,6 +111,10 @@ object BlockFetcherIterator {
             _remoteBytesRead += req.size
             logDebug("Got remote block " + blockId + " after " + Utils.getUsedTimeMs(startTime))
           }
+          if (blockMessageArray.size != req.blocks.size) {
+            val missingBlocks = sizeMap.keySet -- blockMessageArray.map(_.getId)
+            missingBlocks.foreach(blockId => results.put(new FetchResult(blockId, -1, null)))
+          }
         }
         case None => {
           logError("Could not get block(s) from " + cmId)
